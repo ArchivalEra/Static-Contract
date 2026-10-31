@@ -14,3 +14,12 @@
 # !/src/
 # /src/*
 # !/src/contracts/
+
+# ===== mail/ + scripts/（2026-10-31 由 Octave-Extra-Content 建立）=====
+# ⚠️ 白名单模式下新增目录必须放行，否则文件不进 git 且"看不见"（本集群踩过的坑）
+!mail/
+!mail/*.md
+!mail/read/
+!mail/read/*.md
+!scripts/
+!scripts/*.py
