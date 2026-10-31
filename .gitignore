@@ -6,6 +6,7 @@
 !.gitignore
 !LICENSE
 !README.md
+!/vendor/
 
 # 放行整个目录（含其下所有内容）时取消注释：
 # !/src/

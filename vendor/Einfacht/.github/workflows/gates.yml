@@ -1,0 +1,41 @@
+# 事实新鲜度与全部闸门的正面 CI 落点（issue #4 ②）：
+# reflect-hooks/pre-commit / pre-push 只装在跑过 install.sh 的机器上，
+# 且可被 git push --no-verify 跳过 —— 只在自己方便时生效的闸门
+# = 本仓最擅长的那种"从未跑过的闸门"。这里正面执行与本地 hook
+# 同一条判据：facts --check（机器块 ↔ 台账）+ 发现式名录里的
+# 全部闸门（check_facts_replay 含在内 ⇒ 台账每条 cmd 在 CI 里
+# 真的被逐字执行）。闸门数目以发现式名录为准 —— 这里不写数字，
+# 手写数字一定会漂。
+name: gates
+
+on:
+  push: {}
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # 钉小版本 + check-latest（uTLS-Gone issue #4 的实战经验）：
+      # runner 镜像缓存会滞后安全发布 —— 只写大版本（如 "3"）默认 check-latest: false，
+      # 实测解析到旧镜像里打包的 patch；写大版本 ≠ 拿到修复版。显式钉小版本并强制
+      # 解析最新 patch，让「CI 运行时」与「安全公告」对齐（issue #19 部署链真值漂移
+      # 的一个具体实例：CI 配置是运行时版本的唯一产地，必须是被闸门看见的事实）。
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          check-latest: true
+      - name: 事实块与台账一致 + 发现式名录的全部闸门全绿
+        run: |
+          # 名录对账（缺声明 / 孤儿 / 旗标错 / 写而不跑的自证 / 幻影旋钮）
+          python3 zreflect/registry.py --gates >/dev/null
+          python3 zreflect/registry.py --selftest-modules >/dev/null
+          python3 zreflect/facts.py --check "${REFLECT_DOC:-STATE.md}"
+          # 执行面唯一产地（C1）：跑 runs_at="commit" 的闸门，聚合 ran/off/failed
+          # （off 不是通过 —— 输出里单列）。别再 glob check_*.py。
+          python3 zreflect/registry.py --run commit
+      - name: 平台模块自证（gate / runner / knobs / registry / guard / ledger / render / facts）
+        run: |
+          for m in $(python3 zreflect/registry.py --selftest-modules); do
+            echo "--- $m"; python3 "$m" --selftest || exit 1
+          done
