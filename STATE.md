@@ -30,10 +30,25 @@
   生成器 [[tool_manifest_selftest_pass]] PASS / 0 fail，
   校验器 [[tool_check_release_selftest_pass]] PASS / 0 fail（V1–V10 fail-closed）。
   （移交信所载 `40/25` 是信写完后的旧数字，以本仓实测为准——工具在移交后更新过一轮。）
-- **站点**：元数据站。产物 = `index.html` + `catalogue.json` + `contract/*.md` +
-  `tools/*.py` + `README.md` + `STATE.md` + `maintaince.md`，**无任何 release 件**。
-  数据源 `site/catalogue.json`，当前收录 [[catalogue_releases]] 条（试点链第 1 环未跑）。
+- **站点**：元数据站。产物 = `index.html` + `catalogue.json` + `sources.json` +
+  `contract/*.md` + `tools/*.py` + `README.md` + `STATE.md` + `maintaince.md`，
+  **无任何 release 件**。
   构建复跑：`python3 scripts/build-site.py --out site/dist`（确定性构建，两次逐字节一致，自证覆盖）。
+- **catalogue（严格派生，2026-11-01 裁定）**——用户裁定原话：「最后做一下 catalogue 的
+  严格校验，不允许有坏的流到客户端，足够了，根本不需要客户端错误排查的事情，
+  只要坏的从未上架过」+「严格拒绝，我叫LLVM重新发了」。
+  ⇒ catalogue 是**派生产物**（`scripts/sync-catalogue.py`）：不手改、条目不落 git；
+  订阅清单 `site/sources.json` 只记仓名（加仓是显式决定）。
+  六道闸 G1–G6：有 manifest 且平台给 digest / manifest 内容 sha == 平台 digest /
+  V1–V10 全过 / **每个 chunk 的 sha256 == 该 asset 的平台 digest**（零下载验字节 ——
+  GitHub asset API 实测 `107/107` 带 digest）/ schema 必须 2 / **无孤儿 asset**。
+  失败处置：单条不过 ⇒ 不进 array 并记 `excluded`（照样发布，可审计）；
+  **source 取数失败 ⇒ 整步红、部署中止、三通道停在上次好结果**（绝不发空目录）。
+  实测（2026-11-01 dry-run）：15 条上架 / 6 条排除 —— LLVM `v0.1.0`–`v0.1.4` 被 G5
+  （schema 1）挡、`v0.1.5` 被 G6（孤儿 `llvm-wasm-bundle-v0.1.5.tar.gz`）挡；
+  用户裁定**硬拒**并令 LLVM 重发。复跑：`python3 scripts/sync-catalogue.py --dry-run`、
+  `--selftest`（12 PASS / 0 FAIL）。
+  闸门入册：`zreflect/check_catalogue.py`（派生器自证 + 兜底源必须空 + 订阅清单非空）。
 - **部署链（三通道并行，一份产物）**——用户裁定 2026-11-01：「pages + cf pages + edgeone
   三条并行且只需要出一份产物就能三地部署」。push main → `sync-deploy` workflow
   （构建器自证 + 构建 + 0 字节闸门）→ **同一份 `site/dist`** 走两条腿：
@@ -83,12 +98,12 @@
 
 | 键 | 值 | 测于 | 复跑命令 |
 |---|---|---|---|
-| `catalogue_releases` | **0** | 2026-11-01T10:39:17+0800 | `python3 -c "import json;print(len(json.load(open('site/catalogue.json'))['releases']))"` |
-| `mail_unread` | **0** | 2026-11-01T10:39:17+0800 | `find mail -maxdepth 1 -name '[0-9]*.md' | wc -l` |
-| `site_build_selftest_pass` | **10** | 2026-11-01T10:39:17+0800 | `python3 scripts/build-site.py --selftest 2>/dev/null | grep -c '^PASS'` |
-| `specs_md` | **6** | 2026-11-01T10:39:16+0800 | `ls specs/*.md | wc -l` |
-| `tool_check_release_selftest_pass` | **26** | 2026-11-01T10:39:17+0800 | `python3 tools/check-release-v4.py --selftest 2>/dev/null | grep -c '^PASS'` |
-| `tool_manifest_selftest_pass` | **43** | 2026-11-01T10:39:17+0800 | `python3 tools/make-manifest-v4.py --selftest 2>/dev/null | grep -c '^PASS'` |
+| `catalogue_releases` | **0** | 2026-11-01T14:44:32+0800 | `python3 -c "import json;print(len(json.load(open('site/catalogue.json'))['releases']))"` |
+| `mail_unread` | **0** | 2026-11-01T14:44:32+0800 | `find mail -maxdepth 1 -name '[0-9]*.md' | wc -l` |
+| `site_build_selftest_pass` | **10** | 2026-11-01T14:44:31+0800 | `python3 scripts/build-site.py --selftest 2>/dev/null | grep -c '^PASS'` |
+| `specs_md` | **6** | 2026-11-01T14:44:30+0800 | `ls specs/*.md | wc -l` |
+| `tool_check_release_selftest_pass` | **26** | 2026-11-01T14:44:31+0800 | `python3 tools/check-release-v4.py --selftest 2>/dev/null | grep -c '^PASS'` |
+| `tool_manifest_selftest_pass` | **43** | 2026-11-01T14:44:31+0800 | `python3 tools/make-manifest-v4.py --selftest 2>/dev/null | grep -c '^PASS'` |
 
 6 条事实。
 <!-- /AUTO:FACTS -->
@@ -100,6 +115,7 @@
 | 闸门 | 相位 | 它挡住什么 | 消费的旋钮 |
 |---|---|---|---|
 | `check_ab.py`（A/B 闸门） | commit | A/B 同旗标不变式（非 allow 轴差异 = 混淆变量，A/B 作废） | `REFLECT_AB` |
+| `check_catalogue.py`（catalogue 派生闸门） | commit | 派生器自证全绿 + 兜底源文件不得含手写条目（条目只由派生产出） | — |
 | `check_envfile.py`（env 文件闸门） | commit | 守钩子的 REFLECT_* 载体（旋钮 typo / 指向缺失 / 空值） | `REFLECT_ENV_FILE` |
 | `check_facts.py`（事实闸门） | commit | 块一致性 / 裸数字 / 坏引用 | `REFLECT_FACTS`, `REFLECT_DOC`, `REFLECT_NAKED_MIN` |
 | `check_facts_replay.py`（复跑闸门） | commit | 台账 cmd 逐字复跑（裸值契约：stdout 必须等于值） | `REFLECT_FACTS`, `REFLECT_REPLAY`, `REFLECT_REPLAY_TIMEOUT` |
@@ -115,5 +131,5 @@
 | `check_world.py`（world 闸门） | commit | 声明式验证对象：多线仓库共享验证环境的世界对账 | `REFLECT_WORLD`, `REFLECT_WORLD_LINE` |
 | `doctor.py`（开工预检 doctor） | start-of-work | 进程 / 端口活性（查会死的东西 ⇒ runs_at=start-of-work，不进 pre-commit） | `REFLECT_DOCTOR`, `REFLECT_DOCTOR_TIMEOUT` |
 
-15 道闸门（发现式名录派生 —— 手写清单会漂，加闸门 = 落一个声明行，这里自动长出来）。
+16 道闸门（发现式名录派生 —— 手写清单会漂，加闸门 = 落一个声明行，这里自动长出来）。
 <!-- /AUTO:GATES -->

@@ -35,11 +35,11 @@ Octave 集群的**静态分发契约权威仓**：协议正典、工具链、悬
 | `questions/` | 悬案台账（`05`：zstd vs gzip 在 EdgeOne 真链路的实测裁决） |
 | `STATE.md` | 活状态（Einfacht 生态格式：只写「现在是什么」，断言旁带复跑方式） |
 | `maintaince.md` | 方向与地图（维护边界 / 例行 / 红线） |
-| `site/` | 元数据站数据源（`catalogue.json`；**不收录任何 release 件**） |
+| `site/` | 元数据站数据源：`sources.json`（订阅清单）+ `catalogue.json`（兜底源，**必须为空**——真条目由派生器产出） |
 | `zreflect/` | Einfacht 事实系统平台（自 `vendor/Einfacht` `6e4e6e8`）+ 本仓数据层收集器；台账 `FACTS.json`（**别手改**，跑 `zreflect/facts.py`） |
 | `reflect-hooks/` | git 钩子与旋钮载体（装：`sh reflect-hooks/install.sh`；pre-commit 重渲染机器块 + commit 相位全部闸门） |
 | `mail/` | 跨仓邮件收件箱（规矩见 `mail/README.md`：只追加不删 / 编号递增 / 投递≠提交） |
-| `scripts/` | 零依赖脚本：`mail-read.py`（读信）、`build-site.py`（建站，构建器自证 10/10） |
+| `scripts/` | 零依赖脚本：`mail-read.py`（读信）、`build-site.py`（建站，自证 10/10）、`sync-catalogue.py`（catalogue 严格派生，自证 12/12） |
 | `vendor/Einfacht` | 反幻觉事实系统套件（上游 `6e4e6e8`，快照 vendor） |
 
 ## 本仓在集群里的位置

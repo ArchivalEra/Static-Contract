@@ -51,10 +51,10 @@ Octave 集群的**静态分发契约权威仓**：协议正典 + 工具链 + 元
 - **推送**：`REFLECT_READMES`（= `README.md`）随**每批推送同批更新**——「同批」判据
   单条目不退化（check_readme_sync 自证明写），pre-push 与 CI 同判据。
   文档跟着代码走，不是仪式：改了行为不同步文档，文档从那一刻起就在撒谎。
-- **收录一个 release**：向 `site/catalogue.json` 加条目
-  （`id` 唯一无空白；`base` / `base_proxy` 必须 `https://` 且以 `/` 结尾）
-  → push main。`sync-deploy` 自动重建，**一份 `site/dist` 三通道并行**：
-  deploy 分支（CF / EdgeOne 监听）+ GitHub Pages（workflow 直发），部署侧零手工。
+- **收录一个 release**：**不再手改**。发布方发完 GitHub release 即算接入
+  （订阅清单里已有该仓的话）；`sync-deploy` 每次推送 + 每 6 小时派生一次
+  catalogue，G1–G6 全过的才上架。新仓加入 = 在 `site/sources.json` 加一行（显式决定）。
+  坏 release 不进目录，原因写进 catalogue 的 `excluded`（对外可见，可审计）。
 - **部署出口**：deploy 分支 = 纯站点产物（orphan 单提交），只由 workflow 写；
   GitHub Pages 由同一 workflow 正面部署 —— 三个通道内容逐字同源。
 - **改正典**：先开 `questions/` 悬案（挂可执行结算判据）→ 裁定 → 改正典，

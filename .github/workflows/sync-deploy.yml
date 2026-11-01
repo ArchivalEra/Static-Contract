@@ -1,11 +1,16 @@
 name: sync-deploy
-# main push → 自证 + 构建站点 → orphan 单提交强推 deploy 分支。
+# main push → 派生 catalogue（严格校验）+ 构建站点 → orphan 单提交强推 deploy 分支。
 # CF Pages / EdgeOne Pages 监听 deploy 分支，从而实现「main 修改完 deploy 就更新」。
 # deploy 分支永远只有一个无父提交（当前站点产物），无历史膨胀。
+#
+# 也定时跑：catalogue 是**关于 release 现状的实测**，上游发新 release 不一定推我这个仓。
+# 定时是兜底（上游变更 ≤6h 内可见）；任何一步失败都不会覆盖上次的好结果。
 
 on:
   push:
     branches: [main]
+  schedule:
+    - cron: '17 */6 * * *'      # 兜底：上游发 release 不会推我仓
   workflow_dispatch:
 
 permissions:
@@ -25,6 +30,19 @@ jobs:
 
       - name: 构建器自证（含「不收录 release 件」闸门自证）
         run: python3 scripts/build-site.py --selftest
+
+      # 严格派生 catalogue（用户裁定：坏的从未上架，客户端零错误处理）。
+      # 任一 release 不过 G1–G6 就不进 array（记入 excluded 并发布）；
+      # 任一 **source 取数失败** ⇒ 本步红 ⇒ 后续构建/部署全部中止，
+      # 三条通道保持上次的好结果 —— 绝不发布一个「所有 release 都消失」的空目录。
+      - name: 派生 catalogue（严格校验，坏的不上架）
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 scripts/sync-catalogue.py --selftest
+          python3 scripts/sync-catalogue.py --out "$RUNNER_TEMP/catalogue.json"
+          echo "CATALOGUE_DERIVED=$RUNNER_TEMP/catalogue.json" >> "$GITHUB_ENV"
 
       - name: 构建站点
         run: python3 scripts/build-site.py --out site/dist

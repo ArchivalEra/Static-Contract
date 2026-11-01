@@ -24,6 +24,7 @@ HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SPECS = os.path.join(HERE, "specs")
 TOOLS = os.path.join(HERE, "tools")
 CATALOGUE_SRC = os.path.join(HERE, "site", "catalogue.json")
+SOURCES_SRC = os.path.join(HERE, "site", "sources.json")
 README = os.path.join(HERE, "README.md")
 
 # 开放词表超集：正典 V9 codecs 是开放词表，闸门按超集匹配宁可误拒不漏放
@@ -84,18 +85,28 @@ def gate_dist(dist):
 
 # ── 构建 ─────────────────────────────────────────────────────────────────────
 def build(out):
-    cat = load_catalogue(CATALOGUE_SRC)
+    # catalogue 是**派生产物**（scripts/sync-catalogue.py 从各仓 release 严格派生）。
+    # 源文件 site/catalogue.json 只作兜底：派生件不在时用它，并**明说**是兜底，
+    # 不许静默把「没派生」伪装成「派生结果为空」。
+    derived = os.environ.get("CATALOGUE_DERIVED", "").strip()
+    src = derived if derived and os.path.exists(derived) else CATALOGUE_SRC
+    cat = load_catalogue(src)
+    if os.path.abspath(src) == os.path.abspath(CATALOGUE_SRC):
+        print("⚠ catalogue 用的是源文件兜底（未派生）—— 发布前应先跑 "
+              "scripts/sync-catalogue.py", file=sys.stderr)
     tmp = tempfile.mkdtemp(prefix="build-site-")
     try:
         d = os.path.join(tmp, "dist")
         os.makedirs(os.path.join(d, "contract"))
         os.makedirs(os.path.join(d, "tools"))
-        for src, dst in ((SPECS, os.path.join(d, "contract")),
-                         (TOOLS, os.path.join(d, "tools"))):
-            for name in sorted(os.listdir(src)):
+        for src_dir, dst in ((SPECS, os.path.join(d, "contract")),
+                             (TOOLS, os.path.join(d, "tools"))):
+            for name in sorted(os.listdir(src_dir)):
                 if name.endswith((".md", ".py")):
-                    shutil.copy2(os.path.join(src, name), os.path.join(dst, name))
-        shutil.copy2(CATALOGUE_SRC, os.path.join(d, "catalogue.json"))
+                    shutil.copy2(os.path.join(src_dir, name), os.path.join(dst, name))
+        shutil.copy2(src, os.path.join(d, "catalogue.json"))
+        # 订阅清单随站一起发布：**可审计**（谁决定收哪些仓）
+        shutil.copy2(SOURCES_SRC, os.path.join(d, "sources.json"))
         for fname in ("README.md", "STATE.md", "maintaince.md"):
             shutil.copy2(os.path.join(HERE, fname), os.path.join(d, fname))
         with open(os.path.join(d, "index.html"), "w", encoding="utf-8") as f:
