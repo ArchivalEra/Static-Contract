@@ -73,7 +73,18 @@ Octave 集群的**静态分发契约权威仓**：协议正典、工具链、悬
 ② `actions/deploy-pages` 部署 GitHub Pages。
 通道：`https://archivalera.github.io/Static-Contract/` ·
 `https://static.mango-mesa.ccwu.cc/static/`（Cloudflare）·
-`https://isui.ren/static/`（EdgeOne，国内路径）——内容逐字同源，头语义（ETag/`304`/Content-Type）在站侧。
+`https://isui.ren/static/`（EdgeOne，国内路径）。头语义（ETag/`304`/Content-Type）在站侧。
+
+**线上验收**：`scripts/verify-channels.py` 在部署后逐通道核对**本次产物指纹**
+（`STATIC-CONTRACT-BUILD <hash>` 写在 index.html 里）与 `catalogue.verified_at`。
+判据锚在产物本身，**不是通道之间是否一致**——全都停在旧产物时，一致性同样成立
+（2026-11-01 我正是这样误判过一次）。
+
+> ⚠️ **已知缺陷（2026-11-01，未修复）**：EdgeOne 通道读到的是 shirone 侧 Worker
+> 内联的打包快照，**不跟 deploy 分支实时同步**——对方不重新生成并部署 Worker，
+> 那条通道就停在旧快照（实测：deploy 与 Pages 均已 16 条，EdgeOne 仍是空 catalogue
+> 与旧 index）。这与「一份产物三地部署」的裁定不符，需 shirone 侧改成读 deploy 分支
+> 或每次推送后触发重新部署。**验收闸门会一直红着，直到它真吃到产物。**
 CI：`gates` workflow 跑与本地钩子同一判据（事实块对账 + 名录全闸门 + 模块自证），
 环境侧显式装 `zstandard`（生成器自证的仪器）并 source `reflect-hooks/Einfacht.env`（旋钮来源）。
 

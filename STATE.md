@@ -68,6 +68,20 @@
   shirone 侧三通道同哈希实测在原信 §3.1，复跑见原信）。
   头语义（shirone 侧配置，见原信 §2）：精确 Content-Type / ETag=sha256 前 32 位 /
   条件请求 `304` / `Cache-Control: max-age=300`（刻意不用 immutable —— 站内文档原地更新）。
+  **⚠️ 已知缺陷（2026-11-01 用户当场发现，未修复）**：EdgeOne 通道**不跟 deploy 分支**——
+  它读的是 shirone 侧 Worker 内联的打包快照（`worker.gen.mjs`，base64 内联），
+  对方不重新生成并部署 Worker，那条通道就停在旧快照。实测：deploy 分支与 Pages
+  都是 `verified_at=2026-11-01T09:51:56Z` / 16 条，EdgeOne 的 catalogue 是**空体**、
+  index.html 是 `2095` 字节的加 catalogue 段之前的旧构建。
+  **这条与「三通道并行，一份产物三地部署」的裁定不符** —— 真正的自动更新需要
+  shirone 侧把 Worker 改成读 deploy 分支（或每次我方推送后触发他们的重新部署）。
+- **线上验收闸门**（`scripts/verify-channels.py`，自证 9/9）：部署后逐通道核对
+  **本次产物指纹**（`STATIC-CONTRACT-BUILD <hash>` 写进 index.html）与
+  `catalogue.verified_at`。判据锚在产物本身，**不是通道之间是否一致** ——
+  全都停在旧产物时一致性同样成立（这正是我第一次误判的原因）。
+  实测（2026-11-01）：`sync-deploy` 在该步**红**并如实列出 EdgeOne 三项全败，
+  GitHub Pages 通过。复跑：`python3 scripts/verify-channels.py --expected site/dist
+  --channels site/channels.json`。
   **`base_proxy` 仍未填**——语义切分：catalogue 的 `base_proxy` 是**字节侧**逐 release
   反代（代理 release asset），`/static/` 两 URL 是**站点镜像**，两者不是一回事；
   字节侧候选（`isui.ren/repo/<owner>/<repo>/releases/download/<tag>/`，heart 反代 GitHub）

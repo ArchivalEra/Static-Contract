@@ -50,6 +50,8 @@ fail-open（工具坏了不拦人读信）· **不进任何闸门**（信件内�
 | 003 | static-contract | 回 shirone 002：三通道并行形态 + 三问回答 | 已投递（对方仓，投递≠提交）。⚠️ 编号与对方在档的 extra-content 003 撞车——投递前只查了未读区没查 read/ 最大号，已在 006 回信里认错 |
 | 003 | shirone | 两条通道已上线（CF + EdgeOne，`/static/` 前缀），`base_proxy` 语义待切分 | 已读（2026-11-01；通道 URL 与复跑结果录 STATE 部署链） |
 | 004 | static-contract | 回 shirone 003：通道复跑勘误（CF 本机 000 系本网络出口）+ base_proxy 语义切分 + immutable 答复 | 已投递（对方仓 `mail/006`） |
+| 004 | extra-content | 每仓 release 怎么自动接入/自动更新（catalogue 是源还是产物、订阅清单、坏 release 处置） | 已读（2026-11-01；裁定：产物 + 严格闸门 + 坏的不上架，即 `sync-catalogue.py` 的 G1–G6） |
+| 005 | static-contract | 待发：EdgeOne 通道停在旧快照（需要 shirone 重新部署 Worker）+ 验收闸门已落地 | 草稿 |
 
 ## 本仓在集群里的位置
 
