@@ -5,6 +5,9 @@ Octave 集群的**静态分发契约权威仓**：协议正典、工具链、悬
 > **身份裁定（最最核心）：本仓只是契约维护者。站点不收录任何 release 件（0 字节托管）；
 > 所有的包，要么去 GitHub 拿（release 直链），要么走反代（集群边缘）。**
 
+**License：本仓（文档 / 工具 / 站点）以 [AGPL-3.0](LICENSE) 授权。收录的 release 不在本仓
+授权范围内 —— 每个 release 的许可归其发布方（见其 `manifest.json`）。**
+
 > **一个 release = 一个不可变 tag = 一份 `manifest.json` + N 个扁平 asset。**
 > 名字只允许 GitHub 不会改写的字符（白名单）⇒ `manifest.file` 与真实 asset 名恒等。
 > 客户端只从 manifest 取名字，绝不拼 ⇒ 404 只有一种含义。一切字节走普通 GET。
@@ -30,7 +33,7 @@ Octave 集群的**静态分发契约权威仓**：协议正典、工具链、悬
 
 | 目录 | 内容 |
 |---|---|
-| `specs/` | 契约正典（v4）+ v0–v3 演化史 + 收纳审计（自 Octave-Extra-Content 移交，原始材料未改） |
+| `specs/` | 契约正典（v4）+ v0–v3 演化史 + 收纳审计（自 Octave-Extra-Content 移交，原始材料未改）+ **v1.1 许可证协议草案** |
 | `tools/` | v4 生成器与校验器（同上） |
 | `questions/` | 悬案台账（`05`：zstd vs gzip 在 EdgeOne 真链路的实测裁决） |
 | `STATE.md` | 活状态（Einfacht 生态格式：只写「现在是什么」，断言旁带复跑方式） |
@@ -39,7 +42,7 @@ Octave 集群的**静态分发契约权威仓**：协议正典、工具链、悬
 | `zreflect/` | Einfacht 事实系统平台（自 `vendor/Einfacht` `6e4e6e8`）+ 本仓数据层收集器；台账 `FACTS.json`（**别手改**，跑 `zreflect/facts.py`） |
 | `reflect-hooks/` | git 钩子与旋钮载体（装：`sh reflect-hooks/install.sh`；pre-commit 重渲染机器块 + commit 相位全部闸门） |
 | `mail/` | 跨仓邮件收件箱（规矩见 `mail/README.md`：只追加不删 / 编号递增 / 投递≠提交） |
-| `scripts/` | 零依赖脚本：`mail-read.py`（读信）、`build-site.py`（建站，自证 12/12）、`sync-catalogue.py`（catalogue 严格派生，自证 12/12）、`verify-channels.py`（线上验收，自证 9/9） |
+| `scripts/` | 零依赖脚本：`mail-read.py`（读信）、`build-site.py`（建站，自证 13/13）、`sync-catalogue.py`（catalogue 严格派生，自证 12/12）、`verify-channels.py`（线上验收，自证 9/9） |
 | `vendor/Einfacht` | 反幻觉事实系统套件（上游 `6e4e6e8`，快照 vendor） |
 
 ## 本仓在集群里的位置

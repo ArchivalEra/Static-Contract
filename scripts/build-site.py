@@ -131,7 +131,7 @@ def build(out):
         shutil.copy2(src, os.path.join(d, "catalogue.json"))
         # 订阅清单随站一起发布：**可审计**（谁决定收哪些仓）
         shutil.copy2(SOURCES_SRC, os.path.join(d, "sources.json"))
-        for fname in ("README.md", "STATE.md", "maintaince.md"):
+        for fname in ("README.md", "STATE.md", "maintaince.md", "LICENSE"):
             shutil.copy2(os.path.join(HERE, fname), os.path.join(d, fname))
         with open(os.path.join(d, "index.html"), "w", encoding="utf-8") as f:
             f.write(render_index(cat, fingerprint))
@@ -249,6 +249,10 @@ pre { font-family:monospace; font-size:100%; background-color:#f4f4f8;
   <div id="header">
     <span>Static-Contract</span><br />
     <h2>Octave 集群 &middot; 静态分发契约 &middot; 元数据站（0 字节托管）</h2>
+    <div style="font-size:95%;margin-top:.2em">
+      License: <a href="https://www.gnu.org/licenses/agpl-3.0.html">AGPL-3.0</a>
+      &middot; <a href="LICENSE">全文</a>
+    </div>
   </div>
 
   <div class="sidebar" id="navigation">
@@ -289,6 +293,7 @@ pre { font-family:monospace; font-size:100%; background-color:#f4f4f8;
           <li><a href="maintaince.md">maintaince.md</a></li>
           <li><a href="sources.json">sources.json</a></li>
           <li><a href="catalogue.json">catalogue.json</a></li>
+          <li><a href="LICENSE">LICENSE (AGPL-3.0)</a></li>
         </ul>
       </div>
     </div>
@@ -417,6 +422,12 @@ pre { font-family:monospace; font-size:100%; background-color:#f4f4f8;
       <div class="caption">站点信息</div>
       <div class="content">
         <address>
+          <b>本站（含页面、契约正典、工具链）以
+          <a href="https://www.gnu.org/licenses/agpl-3.0.html">AGPL-3.0</a> 授权。</b>
+          全文：<a href="LICENSE">LICENSE</a> &middot;
+          源码：<a href="https://github.com/ArchivalEra/Static-Contract">GitHub</a><br />
+          <b>收录的 release 不在本站授权范围内</b> &mdash; 每个 release 的许可归其发布方，
+          见该 release 的 <code>manifest.json</code> 与源仓。本站只托管<b>元数据</b>。<br /><br />
           catalogue verified_at: <span class="mono">@@VERIFIED@@</span><br />
           @@FP@@<br />
           本站零 JS、零外链资源 &mdash; 纯 XHTML 1.1 + CSS，文本浏览器可读。<br />
@@ -491,7 +502,7 @@ def selftest():
                 for n in files:
                     names.add(os.path.relpath(os.path.join(root, n), os.path.join(d, "dist")))
             need = {"index.html", "catalogue.json", "README.md",
-                    "STATE.md", "maintaince.md",
+                    "STATE.md", "maintaince.md", "LICENSE", "sources.json",
                     "contract/2026-10-30-release-contract-v4.md",
                     "tools/make-manifest-v4.py", "tools/check-release-v4.py"}
             return need <= names and all(not ASSET_SHAPE.search(n) for n in names)
@@ -550,6 +561,18 @@ def selftest():
             shutil.rmtree(d, ignore_errors=True)
             shutil.rmtree(os.path.join(TOOLS, "__pycache__"), ignore_errors=True)
     ok("★ 真构建：tools/__pycache__ 存在时产物也不含它（端到端）", no_pycache_in_dist)
+
+    # 13. 许可证标记：页面必须声明 AGPL 且 LICENSE 随站发布
+    def license_marked():
+        d = tempfile.mkdtemp()
+        try:
+            build(os.path.join(d, "dist"))
+            idx = open(os.path.join(d, "dist", "index.html"), encoding="utf-8").read()
+            has_lic = os.path.exists(os.path.join(d, "dist", "LICENSE"))
+            return has_lic and "AGPL-3.0" in idx and 'href="LICENSE"' in idx
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+    ok("★ 许可证：页面声明 AGPL-3.0 且 LICENSE 随站发布", license_marked)
 
     bad = 0
     for label, passed, err in cases:
