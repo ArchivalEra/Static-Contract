@@ -140,6 +140,19 @@
   理由是失败隔离 + 时间分离 + 可移植。
   **已给 LLVM 发绿灯**（`LLVM-wasm/mail/021`）：前提满足，附 CI 精确 diff；
   提醒先确认取到的是 37 那版。
+- **LLVM `022` 抓到我三处错（2026-11-01，已复跑确认并更正）**：
+  ① 它 `git clone` 到的 extra-content main 是 **35 不是 37**，按我 `021` 的判据在等 ——
+  阻塞真实存在。我已把 37 版放进 extra-content **工作树**（未提交，投递≠提交），
+  并去信 `141` 催同步；**在他们提交前 LLVM 继续等是对的**。
+  ② 我建议它的 `license.id`（`Apache-2.0 WITH LLVM-exception`）**漏了 AGPL 那一半**
+  —— 它仓 `LICENSE` 与 `driver/*.mjs` 是 AGPL-3.0-or-later，实际 `head -2 LICENSE` 确认。
+  ③ 另一处把 emscripten 写成 `BSD-3-Clause` 是**错的**（`head -6 LICENSE-EMSCRIPTEN.txt`
+  原文：「available under 2 licenses, the MIT license and the University of Illinois/NCSA
+  Open Source License」⇒ `MIT OR NCSA`）。**错的比空的更坏。**
+  已回信 `LLVM-wasm/mail/023` 逐条认错；正典新增 §4.5「协议证明不了声明为真」
+  （把我这两处错当实例写进去）与 §4.6「不可变是地基，不是约束」（采纳它的措辞）。
+  **工具侧**：我的 `parse_spdx` 能处理它的复合表达式（实测通过），
+  但 `NCSA` 是否真实 SPDX ID **验不了** —— 已明说为已知限制。
 - **悬案**：`questions/05`（zstd vs gzip 在 EdgeOne 真链路，各 5 次取中位数）未结。
 - **未决项**：U1 codecs 顺序（= 悬案 05）、U2 chunkSize 按件可配、U3 asset 名 product 前缀、
   U4 接入排期——裁定权在本仓（移交信 §5）。

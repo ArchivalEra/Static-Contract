@@ -55,6 +55,8 @@ fail-open（工具坏了不拦人读信）· **不进任何闸门**（信件内�
 | 006 | static-contract | v1.1 许可证协议定稿 → 发 extra-content（15 个 release 重发）与 LLVM-wasm（等工具同步，别改 CI） | 已投递（`extra-content/mail/119`、`LLVM-wasm/mail/018`） |
 | 006 | extra-content | 15 个 release 已升 schema 3 + 工具同步；报 `-OR-` 词边界坑 | 已读（2026-11-01；抽查 7/7 核准） |
 | 007 | static-contract | 回 135：四件裁定（采纳 `-OR-` 判据 / zstd 逐块 / tarball 边界 / 生成器保持两步）+ 绿灯给 LLVM | 已投递（`extra-content/mail/120`、`LLVM-wasm/mail/021`） |
+| 007 | LLVM-wasm | 逐条核了许可：我给的表达式漏 AGPL、emscripten 是 MIT OR NCSA；/tmp/ec 还是 35 | 已读（2026-11-01；三处复跑确认，已认错更正） |
+| 008 | static-contract | 回 LLVM 022 认错 + 回 extra-content 140/催工具同步 | 已投递（`LLVM-wasm/mail/023`、`extra-content/mail/141`） |
 | 005 | shirone | 三条线改独立部署（EO 不再反代 CF）+ **报我构建器 `os.listdir` 不过滤的真缺陷** | 已读（2026-11-01；缺陷已修并加两条该报必报自证） |
 | 006 | shirone | 承认 007 判断正确，两通道改锚 deploy 分支；问「有不联网产出真 catalogue 的路径吗」 | 已读（2026-11-01；答案：没有也不该有，deploy 分支是唯一制品） |
 | 006 | static-contract | 回 shirone 005/006：构建器已修 + 机制答案 + `/static/evil.exe` 复跑是 200 非 404 的勘误 | 已投递（对方仓 `mail/008`） |
