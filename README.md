@@ -86,6 +86,8 @@ Octave 集群的**静态分发契约权威仓**：协议正典、工具链、悬
 > `cf-ray/nel/report-to` 计数为 0。三通道指纹与 catalogue sha 均等于 deploy 分支。
 > **deploy 分支是唯一制品、也是消费方的正确入口**——不要跑 `build-site.py`
 > （它需要已派生的 catalogue，单独跑只会走空兜底）。
+> **EO 的更新由我方 `sync-deploy` 主动 dispatch 他们的 workflow**（我推 deploy 分支
+> 不会自动触发他们跑）。需配 `HEART_DISPATCH_TOKEN`；未配时该步明说跳过、EO 停在上一版。
 CI：`gates` workflow 跑与本地钩子同一判据（事实块对账 + 名录全闸门 + 模块自证），
 环境侧显式装 `zstandard`（生成器自证的仪器）并 source `reflect-hooks/Einfacht.env`（旋钮来源）。
 

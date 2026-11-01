@@ -76,6 +76,12 @@
   均等于 deploy 分支；EO 的 `cf-ray|nel|report-to` 计数 0（真独立）。
   **`deploy` 分支是唯一制品、也是消费方正确入口**——`build-site.py` 需要已派生的
   catalogue，单独跑只会走空兜底（这是设计，不是缺陷）。
+  最后一环（2026-11-01 补）：EO 静态树由 shirone 的 `deploy.yml` 从我仓 deploy 分支取，
+  **我推 deploy 不会自动触发他们跑** —— 实测我推完新产物后 EO 仍停在上一次。
+  `sync-deploy` 因此在验收前正面 `workflow_dispatch` 他们的 deploy workflow
+  （实测 workflow id 可达、dispatch 成功、EO 跟到同一个指纹 `6b9e1f5600bc23c0`）。
+  未配 `HEART_DISPATCH_TOKEN` 时该步**明说跳过**（不让验收替没发生的动作背锅），
+  此时 EO 注定不跟、验收闸门红是如实报告而非误报。
 
 - **线上验收闸门**（`scripts/verify-channels.py`，自证 9/9）：部署后逐通道核对
   **本次产物指纹**（`STATIC-CONTRACT-BUILD <hash>` 写进 index.html）与
@@ -114,12 +120,12 @@
 
 | 键 | 值 | 测于 | 复跑命令 |
 |---|---|---|---|
-| `catalogue_releases` | **0** | 2026-11-01T18:31:11+0800 | `python3 -c "import json;print(len(json.load(open('site/catalogue.json'))['releases']))"` |
-| `mail_unread` | **0** | 2026-11-01T18:31:11+0800 | `find mail -maxdepth 1 -name '[0-9]*.md' | wc -l` |
-| `site_build_selftest_pass` | **12** | 2026-11-01T18:31:11+0800 | `python3 scripts/build-site.py --selftest 2>/dev/null | grep -c '^PASS'` |
-| `specs_md` | **6** | 2026-11-01T18:31:09+0800 | `ls specs/*.md | wc -l` |
-| `tool_check_release_selftest_pass` | **26** | 2026-11-01T18:31:11+0800 | `python3 tools/check-release-v4.py --selftest 2>/dev/null | grep -c '^PASS'` |
-| `tool_manifest_selftest_pass` | **43** | 2026-11-01T18:31:11+0800 | `python3 tools/make-manifest-v4.py --selftest 2>/dev/null | grep -c '^PASS'` |
+| `catalogue_releases` | **0** | 2026-11-01T19:16:31+0800 | `python3 -c "import json;print(len(json.load(open('site/catalogue.json'))['releases']))"` |
+| `mail_unread` | **0** | 2026-11-01T19:16:31+0800 | `find mail -maxdepth 1 -name '[0-9]*.md' | wc -l` |
+| `site_build_selftest_pass` | **12** | 2026-11-01T19:16:31+0800 | `python3 scripts/build-site.py --selftest 2>/dev/null | grep -c '^PASS'` |
+| `specs_md` | **6** | 2026-11-01T19:16:30+0800 | `ls specs/*.md | wc -l` |
+| `tool_check_release_selftest_pass` | **26** | 2026-11-01T19:16:31+0800 | `python3 tools/check-release-v4.py --selftest 2>/dev/null | grep -c '^PASS'` |
+| `tool_manifest_selftest_pass` | **43** | 2026-11-01T19:16:31+0800 | `python3 tools/make-manifest-v4.py --selftest 2>/dev/null | grep -c '^PASS'` |
 
 6 条事实。
 <!-- /AUTO:FACTS -->

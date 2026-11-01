@@ -7,7 +7,7 @@
   {"name": "cloudflare", "base": "https://static.mango-mesa.ccwu.cc/static/",
    "note": "shirone 侧 Worker：运行期回源 raw deploy 分支（含扩展名白名单 + 路径规范化防开放代理）"},
   {"name": "edgeone", "base": "https://isui.ren/static/",
-   "note": "shirone 侧 EdgeOne Makers 独立静态树，CI 取 deploy 分支；非反代 CF（2026-11-01 已改正）"}
+   "note": "shirone 侧 EdgeOne Makers 独立静态树，CI 取 deploy 分支；非反代 CF（2026-11-01 已改正）。**更新由我方 sync-deploy 的 dispatch 步骤触发**（2026-11-01 补的最后一环）：推完 deploy 分支后正面 dispatch shirone 的 deploy workflow；未配 HEART_DISPATCH_TOKEN 时明说跳过，EO 会停在上一次"}
  ],
  "_known_limits": [
   "EdgeOne 静态层对不存在的路径返回 200（落到站点 404.html 的重定向页），不是真 404 —— 这是平台固有行为（shirone mail/005 §2.3 实测，我方复跑同样 200），故验收闸门**不做 404 判据**。",
