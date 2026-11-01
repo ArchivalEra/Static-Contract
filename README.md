@@ -80,11 +80,12 @@ Octave 集群的**静态分发契约权威仓**：协议正典、工具链、悬
 判据锚在产物本身，**不是通道之间是否一致**——全都停在旧产物时，一致性同样成立
 （2026-11-01 我正是这样误判过一次）。
 
-> ⚠️ **已知缺陷（2026-11-01，未修复；已发信 shirone `mail/007` 并给两个方案）**：EdgeOne 通道读到的是 shirone 侧 Worker
-> 内联的打包快照，**不跟 deploy 分支实时同步**——对方不重新生成并部署 Worker，
-> 那条通道就停在旧快照（实测：deploy 与 Pages 均已 16 条，EdgeOne 仍是空 catalogue
-> 与旧 index）。这与「一份产物三地部署」的裁定不符，需 shirone 侧改成读 deploy 分支
-> 或每次推送后触发重新部署。**验收闸门会一直红着，直到它真吃到产物。**
+> ✅ **已修复（2026-11-01，shirone `mail/006`）**：EdgeOne 曾反代 Cloudflare 的
+> Worker 内联快照，不跟 deploy 分支（实测停在两轮之前）。现在三条线**独立部署**：
+> CF 运行期回源 raw deploy 分支、EO 由 CI 取 deploy 分支落到静态树，EO 响应头
+> `cf-ray/nel/report-to` 计数为 0。三通道指纹与 catalogue sha 均等于 deploy 分支。
+> **deploy 分支是唯一制品、也是消费方的正确入口**——不要跑 `build-site.py`
+> （它需要已派生的 catalogue，单独跑只会走空兜底）。
 CI：`gates` workflow 跑与本地钩子同一判据（事实块对账 + 名录全闸门 + 模块自证），
 环境侧显式装 `zstandard`（生成器自证的仪器）并 source `reflect-hooks/Einfacht.env`（旋钮来源）。
 

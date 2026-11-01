@@ -1,8 +1,17 @@
 {
  "schema": 1,
- "_why": "线上验收闸门（scripts/verify-channels.py）的通道清单。**每个通道都必须吃到本次产物**——「通道之间一致」不算证据：所有通道都停在旧产物时，一致性同样成立（2026-11-01 真实事故：EdgeOne 返回的是加 catalogue 段之前的旧构建，而 Pages 早已是 16 条）。新增通道 = 加一行；某通道长期不可达 = 验收会红，那是要修的信号，不是要跳过的噪音。",
+ "_why": "线上验收闸门（scripts/verify-channels.py）的通道清单。**每个通道都必须等于本次产物**——「通道之间一致」不算证据：所有通道都停在旧产物时，一致性同样成立（2026-11-01 真实事故：EdgeOne 反代 CF 且停在两轮之前，而 Pages 早已 16 条）。判据锚在产物指纹（index.html 里的 STATIC-CONTRACT-BUILD）与 catalogue.verified_at。",
  "channels": [
-  {"name": "github-pages", "base": "https://archivalera.github.io/Static-Contract/"},
-  {"name": "edgeone", "base": "https://isui.ren/static/"}
+  {"name": "github-pages", "base": "https://archivalera.github.io/Static-Contract/",
+   "note": "我方管线直发（actions/deploy-pages）"},
+  {"name": "cloudflare", "base": "https://static.mango-mesa.ccwu.cc/static/",
+   "note": "shirone 侧 Worker：运行期回源 raw deploy 分支（含扩展名白名单 + 路径规范化防开放代理）"},
+  {"name": "edgeone", "base": "https://isui.ren/static/",
+   "note": "shirone 侧 EdgeOne Makers 独立静态树，CI 取 deploy 分支；非反代 CF（2026-11-01 已改正）"}
+ ],
+ "_known_limits": [
+  "EdgeOne 静态层对不存在的路径返回 200（落到站点 404.html 的重定向页），不是真 404 —— 这是平台固有行为（shirone mail/005 §2.3 实测，我方复跑同样 200），故验收闸门**不做 404 判据**。",
+  "EdgeOne 静态层的响应头由平台按文件类型生成（max-age=0 + must-revalidate），不满足「精确 Content-Type / max-age=300」——头语义需求请走 Cloudflare 通道。",
+  "Cloudflare 通道在国内部分出口存在 TLS reset（我方复跑 000，shirone 侧正常）——那是线路问题不是部署缺陷；验收闸门在 CI（海外 runner）里跑，不受此影响。"
  ]
 }

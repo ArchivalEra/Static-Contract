@@ -68,13 +68,15 @@
   shirone 侧三通道同哈希实测在原信 §3.1，复跑见原信）。
   头语义（shirone 侧配置，见原信 §2）：精确 Content-Type / ETag=sha256 前 32 位 /
   条件请求 `304` / `Cache-Control: max-age=300`（刻意不用 immutable —— 站内文档原地更新）。
-  **⚠️ 已知缺陷（2026-11-01 用户当场发现，未修复）**：EdgeOne 通道**不跟 deploy 分支**——
-  它读的是 shirone 侧 Worker 内联的打包快照（`worker.gen.mjs`，base64 内联），
-  对方不重新生成并部署 Worker，那条通道就停在旧快照。实测：deploy 分支与 Pages
-  都是 `verified_at=2026-11-01T09:51:56Z` / 16 条，EdgeOne 的 catalogue 是**空体**、
-  index.html 是 `2095` 字节的加 catalogue 段之前的旧构建。
-  **这条与「三通道并行，一份产物三地部署」的裁定不符** —— 真正的自动更新需要
-  shirone 侧把 Worker 改成读 deploy 分支（或每次我方推送后触发他们的重新部署）。
+  **✅ 通道缺陷已闭合（2026-11-01）**：EdgeOne 曾反代 CF 的 Worker 内联快照，
+  不跟 deploy 分支（实测停在两轮之前：EO 空 catalogue + `2095` B 旧 index，
+  而 deploy/Pages 已 16 条）。shirone 改为三条线**独立部署**（`mail/006`）：
+  CF 运行期回源 raw deploy 分支、EO 由 CI 取 deploy 分支落到 EdgeOne Makers 静态树。
+  我方复跑：三通道指纹 `835cb32f9a64fa4a` 与 catalogue sha `5b0229caf72f7787`
+  均等于 deploy 分支；EO 的 `cf-ray|nel|report-to` 计数 0（真独立）。
+  **`deploy` 分支是唯一制品、也是消费方正确入口**——`build-site.py` 需要已派生的
+  catalogue，单独跑只会走空兜底（这是设计，不是缺陷）。
+
 - **线上验收闸门**（`scripts/verify-channels.py`，自证 9/9）：部署后逐通道核对
   **本次产物指纹**（`STATIC-CONTRACT-BUILD <hash>` 写进 index.html）与
   `catalogue.verified_at`。判据锚在产物本身，**不是通道之间是否一致** ——
@@ -112,12 +114,12 @@
 
 | 键 | 值 | 测于 | 复跑命令 |
 |---|---|---|---|
-| `catalogue_releases` | **0** | 2026-11-01T14:44:32+0800 | `python3 -c "import json;print(len(json.load(open('site/catalogue.json'))['releases']))"` |
-| `mail_unread` | **0** | 2026-11-01T14:44:32+0800 | `find mail -maxdepth 1 -name '[0-9]*.md' | wc -l` |
-| `site_build_selftest_pass` | **10** | 2026-11-01T14:44:31+0800 | `python3 scripts/build-site.py --selftest 2>/dev/null | grep -c '^PASS'` |
-| `specs_md` | **6** | 2026-11-01T14:44:30+0800 | `ls specs/*.md | wc -l` |
-| `tool_check_release_selftest_pass` | **26** | 2026-11-01T14:44:31+0800 | `python3 tools/check-release-v4.py --selftest 2>/dev/null | grep -c '^PASS'` |
-| `tool_manifest_selftest_pass` | **43** | 2026-11-01T14:44:31+0800 | `python3 tools/make-manifest-v4.py --selftest 2>/dev/null | grep -c '^PASS'` |
+| `catalogue_releases` | **0** | 2026-11-01T18:31:11+0800 | `python3 -c "import json;print(len(json.load(open('site/catalogue.json'))['releases']))"` |
+| `mail_unread` | **0** | 2026-11-01T18:31:11+0800 | `find mail -maxdepth 1 -name '[0-9]*.md' | wc -l` |
+| `site_build_selftest_pass` | **12** | 2026-11-01T18:31:11+0800 | `python3 scripts/build-site.py --selftest 2>/dev/null | grep -c '^PASS'` |
+| `specs_md` | **6** | 2026-11-01T18:31:09+0800 | `ls specs/*.md | wc -l` |
+| `tool_check_release_selftest_pass` | **26** | 2026-11-01T18:31:11+0800 | `python3 tools/check-release-v4.py --selftest 2>/dev/null | grep -c '^PASS'` |
+| `tool_manifest_selftest_pass` | **43** | 2026-11-01T18:31:11+0800 | `python3 tools/make-manifest-v4.py --selftest 2>/dev/null | grep -c '^PASS'` |
 
 6 条事实。
 <!-- /AUTO:FACTS -->

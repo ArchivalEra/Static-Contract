@@ -85,6 +85,25 @@ def gate_dist(dist):
 
 
 # ── 构建 ─────────────────────────────────────────────────────────────────────
+def _publishable(src_dir, suffixes):
+    """该目录里**可以发布**的文件名（排序）。目录一律不收。
+
+    缺陷（2026-11-01，shirone `mail/005` §4 / `mail/006` §7 两次报告）：
+    此前是裸 `sorted(os.listdir(...))` —— `--selftest` 在真仓里跑过一次后，
+    Python 生成的 `tools/__pycache__/` 目录会被当成条目渲染成链接并发出去。
+    `.gitignore` 有 `__pycache__/`，但**构建器不读 gitignore**。
+    ⇒ 判据：只收**普通文件**且后缀在白名单内；点开头的一律排除。
+    """
+    out = []
+    for name in sorted(os.listdir(src_dir)):
+        if name.startswith(".") or name == "__pycache__":
+            continue
+        p = os.path.join(src_dir, name)
+        if os.path.isfile(p) and name.endswith(suffixes):
+            out.append(name)
+    return out
+
+
 def build(out):
     # catalogue 是**派生产物**（scripts/sync-catalogue.py 从各仓 release 严格派生）。
     # 源文件 site/catalogue.json 只作兜底：派生件不在时用它，并**明说**是兜底，
@@ -107,9 +126,8 @@ def build(out):
         os.makedirs(os.path.join(d, "tools"))
         for src_dir, dst in ((SPECS, os.path.join(d, "contract")),
                              (TOOLS, os.path.join(d, "tools"))):
-            for name in sorted(os.listdir(src_dir)):
-                if name.endswith((".md", ".py")):
-                    shutil.copy2(os.path.join(src_dir, name), os.path.join(dst, name))
+            for name in _publishable(src_dir, (".md", ".py")):
+                shutil.copy2(os.path.join(src_dir, name), os.path.join(dst, name))
         shutil.copy2(src, os.path.join(d, "catalogue.json"))
         # 订阅清单随站一起发布：**可审计**（谁决定收哪些仓）
         shutil.copy2(SOURCES_SRC, os.path.join(d, "sources.json"))
@@ -136,8 +154,8 @@ def render_index(cat, fingerprint=""):
             proxy=('<a href="%smanifest.json">反代</a>' % html.escape(e["base_proxy"])
                    if e.get("base_proxy") else "—"))
         for e in releases) or "    <tr><td colspan=3>（暂无收录 —— 试点链第 1 环待跑）</td></tr>"
-    specs = sorted(os.listdir(SPECS))
-    tools = sorted(os.listdir(TOOLS))
+    specs = _publishable(SPECS, (".md",))
+    tools = _publishable(TOOLS, (".py",))
     spec_links = "\n".join(
         "    <li><a href=\"contract/%s\">%s</a></li>" % (n, html.escape(n)) for n in specs)
     tool_links = "\n".join(
@@ -266,6 +284,36 @@ def selftest():
             shutil.rmtree(d1, ignore_errors=True)
             shutil.rmtree(d2, ignore_errors=True)
     ok("确定性：两次构建逐字节一致", deterministic)
+    # 11. 发布过滤：目录 / 点开头 / 非白名单后缀 都不许进产物
+    #     （shirone mail/005 §4 报告的缺陷：__pycache__ 曾被渲染成链接）
+    def publishable_filter():
+        d = tempfile.mkdtemp()
+        try:
+            open(os.path.join(d, "good.py"), "w").close()
+            open(os.path.join(d, ".hidden.py"), "w").close()
+            open(os.path.join(d, "note.txt"), "w").close()
+            os.makedirs(os.path.join(d, "__pycache__"))
+            os.makedirs(os.path.join(d, "subdir"))
+            return _publishable(d, (".py",)) == ["good.py"]
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+    ok("★ 发布过滤：目录 / 点开头 / 非白名单后缀一律不收（__pycache__ 缺陷）",
+       publishable_filter)
+
+    # 12. 真构建里不得出现 __pycache__（端到端复现那条缺陷）
+    def no_pycache_in_dist():
+        d = tempfile.mkdtemp()
+        try:
+            os.makedirs(os.path.join(TOOLS, "__pycache__"), exist_ok=True)
+            build(os.path.join(d, "dist"))
+            idx = open(os.path.join(d, "dist", "index.html"), encoding="utf-8").read()
+            bad = [n for dp, dn, fn in os.walk(os.path.join(d, "dist"))
+                   for n in dn + fn if n == "__pycache__"]
+            return "__pycache__" not in idx and not bad
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+            shutil.rmtree(os.path.join(TOOLS, "__pycache__"), ignore_errors=True)
+    ok("★ 真构建：tools/__pycache__ 存在时产物也不含它（端到端）", no_pycache_in_dist)
 
     bad = 0
     for label, passed, err in cases:
