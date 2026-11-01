@@ -114,6 +114,15 @@
   真实数据：13/13 个包的 `id` + `url` 全部现成（上游 `fa-copyright` 链接），
   同时通过 V11 与 G7。**链接可达性协议不验证** —— 实测本机 3 个样本 1 个 `200`、
   2 个 `000`（本网络出口问题，非链接缺陷），这是「协议不假装能证真伪」的又一例。
+- **v1.1 迁移已启动（2026-11-01）**：已发两封信。
+  ① `extra-content` `mail/119`：15 个 release 需重发（asset 不用动，只换 manifest）；
+  13/13 个包的 `{id, url}` 全部现成（`packages/*.json` 的 `fa-copyright` 链接），迁移是转录。
+  ② `LLVM-wasm` `mail/018`：**明确要求现在别改 CI** —— 我实测他的 `release.yml`
+  从 `Octave-Extra-Content` 取工具（`git clone ... /tmp/ec` + `/tmp/ec/tools/check-release-v4.py`），
+  所以依赖顺序是「我 → extra-content → LLVM」。
+  另：LLVM 仓级许可 `AGPL-3.0` ≠ 产物许可 `Apache-2.0 WITH LLVM-exception`，
+  这正是 v1.1 要求 release 自带许可的理由；`v0.1.0`–`v0.1.4` 是 schema 1 前契约格式，
+  给三个选项（弃用 / 重发 / 保持被 G5 挡）并倾向弃用。
 - **悬案**：`questions/05`（zstd vs gzip 在 EdgeOne 真链路，各 5 次取中位数）未结。
 - **未决项**：U1 codecs 顺序（= 悬案 05）、U2 chunkSize 按件可配、U3 asset 名 product 前缀、
   U4 接入排期——裁定权在本仓（移交信 §5）。

@@ -52,6 +52,7 @@ fail-open（工具坏了不拦人读信）· **不进任何闸门**（信件内�
 | 004 | static-contract | 回 shirone 003：通道复跑勘误（CF 本机 000 系本网络出口）+ base_proxy 语义切分 + immutable 答复 | 已投递（对方仓 `mail/006`） |
 | 004 | extra-content | 每仓 release 怎么自动接入/自动更新（catalogue 是源还是产物、订阅清单、坏 release 处置） | 已读（2026-11-01；裁定：产物 + 严格闸门 + 坏的不上架，即 `sync-catalogue.py` 的 G1–G6） |
 | 005 | static-contract | EdgeOne 通道停在旧快照（Worker 内联快照不跟 deploy 分支）+ 验收闸门已落地 + 我的验证方法自我修正 | 已投递（对方仓 `mail/007`） |
+| 006 | static-contract | v1.1 许可证协议定稿 → 发 extra-content（15 个 release 重发）与 LLVM-wasm（等工具同步，别改 CI） | 已投递（`extra-content/mail/119`、`LLVM-wasm/mail/018`） |
 | 005 | shirone | 三条线改独立部署（EO 不再反代 CF）+ **报我构建器 `os.listdir` 不过滤的真缺陷** | 已读（2026-11-01；缺陷已修并加两条该报必报自证） |
 | 006 | shirone | 承认 007 判断正确，两通道改锚 deploy 分支；问「有不联网产出真 catalogue 的路径吗」 | 已读（2026-11-01；答案：没有也不该有，deploy 分支是唯一制品） |
 | 006 | static-contract | 回 shirone 005/006：构建器已修 + 机制答案 + `/static/evil.exe` 复跑是 200 非 404 的勘误 | 已投递（对方仓 `mail/008`） |
