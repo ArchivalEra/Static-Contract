@@ -33,7 +33,9 @@ Octave 集群的**静态分发契约权威仓**：协议正典、工具链、悬
 | `specs/` | 契约正典（v4）+ v0–v3 演化史 + 收纳审计（自 Octave-Extra-Content 移交，原始材料未改） |
 | `tools/` | v4 生成器与校验器（同上） |
 | `questions/` | 悬案台账（`05`：zstd vs gzip 在 EdgeOne 真链路的实测裁决） |
-| `site/` | 元数据站源：catalogue 数据源 + 建站方案（**不收录任何 release 件**，见 `site/PLAN.md`） |
+| `STATE.md` | 活状态（Einfacht 生态格式：只写「现在是什么」，断言旁带复跑方式） |
+| `maintaince.md` | 方向与地图（维护边界 / 例行 / 红线） |
+| `site/` | 元数据站数据源（`catalogue.json`；**不收录任何 release 件**） |
 | `mail/` | 跨仓邮件收件箱（规矩见 `mail/README.md`：只追加不删 / 编号递增 / 投递≠提交） |
 | `scripts/` | 零依赖脚本：`mail-read.py`（读信）、`build-site.py`（建站，构建器自证 10/10） |
 | `vendor/Einfacht` | 反幻觉事实系统套件（上游 `6e4e6e8`，快照 vendor） |
@@ -60,4 +62,5 @@ Octave 集群的**静态分发契约权威仓**：协议正典、工具链、悬
 
 **部署**：deploy 分支 = 纯站点产物，CF Pages / EdgeOne Pages 的部署出口。
 自动更新链：push main → `sync-deploy` workflow（构建器自证 + 构建 + 0 字节闸门）→ orphan 强推 deploy → 托管方自动重建。
-方案与试点验收判据：`site/PLAN.md`。
+
+现状与试点验收判据：`STATE.md`；方向、边界与例行：`maintaince.md`。

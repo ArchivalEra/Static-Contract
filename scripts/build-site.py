@@ -96,7 +96,8 @@ def build(out):
                 if name.endswith((".md", ".py")):
                     shutil.copy2(os.path.join(src, name), os.path.join(dst, name))
         shutil.copy2(CATALOGUE_SRC, os.path.join(d, "catalogue.json"))
-        shutil.copy2(README, os.path.join(d, "README.md"))
+        for fname in ("README.md", "STATE.md", "maintaince.md"):
+            shutil.copy2(os.path.join(HERE, fname), os.path.join(d, fname))
         with open(os.path.join(d, "index.html"), "w", encoding="utf-8") as f:
             f.write(render_index(cat))
         gate_dist(d)
@@ -218,6 +219,7 @@ def selftest():
                 for n in files:
                     names.add(os.path.relpath(os.path.join(root, n), os.path.join(d, "dist")))
             need = {"index.html", "catalogue.json", "README.md",
+                    "STATE.md", "maintaince.md",
                     "contract/2026-10-30-release-contract-v4.md",
                     "tools/make-manifest-v4.py", "tools/check-release-v4.py"}
             return need <= names and all(not ASSET_SHAPE.search(n) for n in names)

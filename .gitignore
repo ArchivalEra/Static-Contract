@@ -6,6 +6,8 @@
 !.gitignore
 !LICENSE
 !README.md
+!STATE.md
+!maintaince.md
 !/vendor/
 
 # ===== 契约正典与工具链（2026-11-01 自 extra-content 移交落库）=====
@@ -16,7 +18,6 @@
 !/questions/
 !/questions/*.md
 !/site/
-!/site/*.md
 !/site/*.json
 # 构建产物只进 deploy 分支，不进 main
 /site/dist/
