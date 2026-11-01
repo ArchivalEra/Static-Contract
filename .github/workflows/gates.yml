@@ -26,6 +26,13 @@ jobs:
           check-latest: true
       - name: 事实块与台账一致 + 发现式名录的全部闸门全绿
         run: |
+          # 钩子同款旋钮来源（einfacht-env.sh 先找钩子目录后找仓根）：
+          # 不挂它，REFLECT_READMES 等回落 Einfacht 三语默认名 ⇒ 本地绿 CI 红。
+          . reflect-hooks/einfacht-env.sh
+          # 台账自证的**仪器**：make-manifest-v4.py 依赖 zstandard（本仓实测机器
+          # 自带，CI 必须显式装 —— 仪器缺席时复跑闸门抓到的是"命令报错"，
+          # 不是"值变了"，二者都红，但前者是环境缺陷不是事实翻案）。
+          python3 -m pip install --quiet zstandard
           # 名录对账（缺声明 / 孤儿 / 旗标错 / 写而不跑的自证 / 幻影旋钮）
           python3 zreflect/registry.py --gates >/dev/null
           python3 zreflect/registry.py --selftest-modules >/dev/null
