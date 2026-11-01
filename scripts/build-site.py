@@ -12,6 +12,7 @@
 # 用法：
 #   python3 scripts/build-site.py --out site/dist   # 构建到指定目录（先建临时目录，成功才替换）
 #   python3 scripts/build-site.py --selftest        # 自证（不碰 site/dist）
+import hashlib
 import html
 import json
 import os
@@ -94,6 +95,11 @@ def build(out):
     if os.path.abspath(src) == os.path.abspath(CATALOGUE_SRC):
         print("⚠ catalogue 用的是源文件兜底（未派生）—— 发布前应先跑 "
               "scripts/sync-catalogue.py", file=sys.stderr)
+    # 构建指纹：线上验收闸门（verify-channels.py）靠它在各通道的 index.html 里
+    # 认出「这是本次产物」。没有它，验收只能比通道之间是否一致 —— 而在所有通道
+    # 都停在旧产物时，一致性同样成立（2026-11-01 真实事故）。
+    fp_input = (cat.get("verified_at") or "no-verified-at") + "|" + str(len(cat.get("releases") or []))
+    fingerprint = "STATIC-CONTRACT-BUILD " + hashlib.sha256(fp_input.encode()).hexdigest()[:16]
     tmp = tempfile.mkdtemp(prefix="build-site-")
     try:
         d = os.path.join(tmp, "dist")
@@ -110,7 +116,7 @@ def build(out):
         for fname in ("README.md", "STATE.md", "maintaince.md"):
             shutil.copy2(os.path.join(HERE, fname), os.path.join(d, fname))
         with open(os.path.join(d, "index.html"), "w", encoding="utf-8") as f:
-            f.write(render_index(cat))
+            f.write(render_index(cat, fingerprint))
         gate_dist(d)
         if os.path.exists(out):
             shutil.rmtree(out)
@@ -120,7 +126,7 @@ def build(out):
     return out
 
 
-def render_index(cat):
+def render_index(cat, fingerprint=""):
     releases = cat["releases"]
     rows = "\n".join(
         '    <tr><td><code>{id}</code></td><td><a href="{base}manifest.json">GitHub 直链</a></td>'
@@ -172,9 +178,10 @@ a{color:#1d4ed8}
 @@TOOLS@@
 </ul>
 <p>完整地图见 <a href="README.md">README.md</a>。apt 的稳健 + HTTP 的简洁。</p>
+<p style="color:#888;font-size:.8em">@@FP@@</p>
 </body>
 </html>
-""".replace("@@ROWS@@", rows).replace("@@SPECS@@", spec_links).replace("@@TOOLS@@", tool_links)
+""".replace("@@ROWS@@", rows).replace("@@SPECS@@", spec_links).replace("@@TOOLS@@", tool_links).replace("@@FP@@", html.escape(fingerprint))
 
 
 # ── 自证 ─────────────────────────────────────────────────────────────────────
@@ -239,7 +246,6 @@ def selftest():
     ok("真构建：产物齐全 + 无 asset 形状", real_build)
     # 10. 确定性：两次构建逐字节一致
     def deterministic():
-        import hashlib
 
         def h(root):
             items = []

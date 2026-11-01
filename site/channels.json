@@ -1,0 +1,8 @@
+{
+ "schema": 1,
+ "_why": "线上验收闸门（scripts/verify-channels.py）的通道清单。**每个通道都必须吃到本次产物**——「通道之间一致」不算证据：所有通道都停在旧产物时，一致性同样成立（2026-11-01 真实事故：EdgeOne 返回的是加 catalogue 段之前的旧构建，而 Pages 早已是 16 条）。新增通道 = 加一行；某通道长期不可达 = 验收会红，那是要修的信号，不是要跳过的噪音。",
+ "channels": [
+  {"name": "github-pages", "base": "https://archivalera.github.io/Static-Contract/"},
+  {"name": "edgeone", "base": "https://isui.ren/static/"}
+ ]
+}

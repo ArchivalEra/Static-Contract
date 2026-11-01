@@ -74,3 +74,18 @@ jobs:
         with:
           path: site/dist
       - uses: actions/deploy-pages@v4
+
+      # ── 线上验收（本次事故的补丁，2026-11-01）──
+      # 前面每一步都可能"绿"而线上仍是旧产物：CDN 缓存、外部托管方没重新
+      # 构建（EdgeOne 读的是 shirone Worker 内联的打包快照，不跟 deploy 分支）、
+      # Pages 传播延迟。判据锚在**产物本身**（构建指纹 + verified_at），
+      # 不是通道之间是否一致 —— 全都停在旧产物时，一致性照样成立。
+      # GitHub Pages 有传播延迟，故给 6 轮 × 20s；仍不齐则红。
+      - name: 线上验收（各通道必须吃到本次产物）
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-channels.py --selftest
+          python3 scripts/verify-channels.py \
+            --expected site/dist \
+            --channels site/channels.json \
+            --attempts 6 --wait 20

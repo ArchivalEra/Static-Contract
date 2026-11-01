@@ -39,7 +39,7 @@ Octave 集群的**静态分发契约权威仓**：协议正典、工具链、悬
 | `zreflect/` | Einfacht 事实系统平台（自 `vendor/Einfacht` `6e4e6e8`）+ 本仓数据层收集器；台账 `FACTS.json`（**别手改**，跑 `zreflect/facts.py`） |
 | `reflect-hooks/` | git 钩子与旋钮载体（装：`sh reflect-hooks/install.sh`；pre-commit 重渲染机器块 + commit 相位全部闸门） |
 | `mail/` | 跨仓邮件收件箱（规矩见 `mail/README.md`：只追加不删 / 编号递增 / 投递≠提交） |
-| `scripts/` | 零依赖脚本：`mail-read.py`（读信）、`build-site.py`（建站，自证 10/10）、`sync-catalogue.py`（catalogue 严格派生，自证 12/12） |
+| `scripts/` | 零依赖脚本：`mail-read.py`（读信）、`build-site.py`（建站，自证 10/10）、`sync-catalogue.py`（catalogue 严格派生，自证 12/12）、`verify-channels.py`（线上验收，自证 9/9） |
 | `vendor/Einfacht` | 反幻觉事实系统套件（上游 `6e4e6e8`，快照 vendor） |
 
 ## 本仓在集群里的位置
@@ -68,7 +68,7 @@ Octave 集群的**静态分发契约权威仓**：协议正典、工具链、悬
 **未试点**：没走完「生产者发 release → catalogue 收录 → 消费者改链接」全链。
 未决项：U1 codecs 顺序（悬案 05）、U2 chunkSize 按件可配、U3 asset 名 product 前缀、U4 其余仓接入排期。
 
-**部署（三通道并行，一份产物，全部已上线）**：push main → `sync-deploy` workflow → **同一份 `site/dist`**：
+**部署（三通道并行，一份产物）**：push main → `sync-deploy` workflow → **同一份 `site/dist`**：
 ① orphan 强推 `deploy` 分支（CF Pages / EdgeOne Pages 监听）；
 ② `actions/deploy-pages` 部署 GitHub Pages。
 通道：`https://archivalera.github.io/Static-Contract/` ·
