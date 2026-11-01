@@ -102,17 +102,18 @@
   配了即自动收编）。CI 同判据：`gates` workflow。阴性实测：正文裸数字会被事实闸门打红
   （`999999` 试探已验证），恢复即绿。
 - **邮件**：001（契约移交）已读归档，当前未读 [[mail_unread]] 封；往来表见 `mail/README.md`。
-- **v1.1 许可证协议（2026-11-01 定稿，经用户纠正后极简化）**：manifest `schema: 3`，
-  `license` 是**一行 SPDX 表达式字符串**。用户裁定原话：「人家只想下个包一条链接」——
-  初版把许可做成了三态 + 见证链 + 修订锚，**那是把「不知道」变成下载路径上的闸门**，
-  已全部删除（判据留在 spec §9）。
-  三层各管一件事：**字节**（`GET <base>/<file>`，不认识许可）/ **manifest**（展示一行）/
-  **catalogue**（没有许可 ⇒ 不收录）。闸门只在上架时挡一次。
-  实现：校验器 V11（[[tool_check_release_selftest_pass]] PASS，含 SPDX 文法双向用例）、
-  派生器 G7（18 PASS）。真实数据：13/13 个包许可一行转成合法 SPDX。
-  **code review 抓到的 3 个真漏洞**（V12 白名单只在 declared 分支跑 / `parse_spdx`
-  放行链式 WITH 与 `LicenseRef-` 空后缀 / `entry.license = null` 被当缺席）
-  随这次简化一并消失 —— 被删的机制本身就是漏洞来源。
+- **v1.1 许可证协议（2026-11-01 定稿，经两次用户纠正）**：manifest `schema: 3`，
+  `license: {id, url}` —— **名称 + 指向全文的 https 链接，两项都必填**。
+  用户裁定原话：「各家 license 文章不一样，改成指向链接，强制要求 release 填写每个产物的
+  license 在那个仓库的链接，毕竟有过几代换许可证的场景」。
+  前两版被判据否掉：① 三态 + 见证链 + 修订锚 ⇒ 「把不知道变成下载路径上的闸门」；
+  ② 只写 SPDX id ⇒ 各家正文不同且会换代，字符串会过期。
+  **三层各管一件事**：字节（`GET <base>/<file>`，不认识许可）/ manifest（展示 `id`，
+  点 `url` 看全文）/ catalogue（缺任一 ⇒ 不收录）。
+  实现：校验器 V11（[[tool_check_release_selftest_pass]] PASS）、派生器 G7（20 PASS）。
+  真实数据：13/13 个包的 `id` + `url` 全部现成（上游 `fa-copyright` 链接），
+  同时通过 V11 与 G7。**链接可达性协议不验证** —— 实测本机 3 个样本 1 个 `200`、
+  2 个 `000`（本网络出口问题，非链接缺陷），这是「协议不假装能证真伪」的又一例。
 - **悬案**：`questions/05`（zstd vs gzip 在 EdgeOne 真链路，各 5 次取中位数）未结。
 - **未决项**：U1 codecs 顺序（= 悬案 05）、U2 chunkSize 按件可配、U3 asset 名 product 前缀、
   U4 接入排期——裁定权在本仓（移交信 §5）。
@@ -131,12 +132,12 @@
 
 | 键 | 值 | 测于 | 复跑命令 |
 |---|---|---|---|
-| `catalogue_releases` | **0** | 2026-11-01T20:58:21+0800 | `python3 -c "import json;print(len(json.load(open('site/catalogue.json'))['releases']))"` |
-| `mail_unread` | **0** | 2026-11-01T20:58:21+0800 | `find mail -maxdepth 1 -name '[0-9]*.md' | wc -l` |
-| `site_build_selftest_pass` | **13** | 2026-11-01T20:58:21+0800 | `python3 scripts/build-site.py --selftest 2>/dev/null | grep -c '^PASS'` |
-| `specs_md` | **7** | 2026-11-01T20:58:20+0800 | `ls specs/*.md | wc -l` |
-| `tool_check_release_selftest_pass` | **42** | 2026-11-01T20:58:21+0800 | `python3 tools/check-release-v4.py --selftest 2>/dev/null | grep -c '^PASS'` |
-| `tool_manifest_selftest_pass` | **43** | 2026-11-01T20:58:21+0800 | `python3 tools/make-manifest-v4.py --selftest 2>/dev/null | grep -c '^PASS'` |
+| `catalogue_releases` | **0** | 2026-11-01T21:13:28+0800 | `python3 -c "import json;print(len(json.load(open('site/catalogue.json'))['releases']))"` |
+| `mail_unread` | **0** | 2026-11-01T21:13:28+0800 | `find mail -maxdepth 1 -name '[0-9]*.md' | wc -l` |
+| `site_build_selftest_pass` | **13** | 2026-11-01T21:13:28+0800 | `python3 scripts/build-site.py --selftest 2>/dev/null | grep -c '^PASS'` |
+| `specs_md` | **7** | 2026-11-01T21:13:27+0800 | `ls specs/*.md | wc -l` |
+| `tool_check_release_selftest_pass` | **35** | 2026-11-01T21:13:28+0800 | `python3 tools/check-release-v4.py --selftest 2>/dev/null | grep -c '^PASS'` |
+| `tool_manifest_selftest_pass` | **43** | 2026-11-01T21:13:28+0800 | `python3 tools/make-manifest-v4.py --selftest 2>/dev/null | grep -c '^PASS'` |
 
 6 条事实。
 <!-- /AUTO:FACTS -->

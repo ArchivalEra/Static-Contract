@@ -134,22 +134,52 @@ def parse_spdx(expr):
 
 
 def _check_license(man, ok, P):
-    """V11：`license` 是**一行合法 SPDX 表达式字符串**（schema 3 必填）。
+    """V11：`license` 是 `{id, url}` —— **名称 + 指向许可全文的链接**。
 
-    **不查语义、不查来源、不联网、不读盘。** 一行字符串，就这么简单。
+    为什么不是一个字符串（用户 2026-11-01 裁定）：
+        「各家 license 文章不一样，改成指向链接，强制要求 release 填写每个产物的
+          license 在那个仓库的链接，毕竟有过几代换许可证的场景」
+
+    判据：
+      · `id` 是 SPDX 标识符形状（给人快速判读；**不校验是否在 SPDX 词表内**——词表会漂）
+      · `url` 必须 `https://` 且非空（**全文的权威出处**；换许可证时这里会变）
+      · 两者**都必填**：只有 id = 指向"标准文本"，但各家常有附加条款、改写过、
+        或根本不在 SPDX 词表里；只有 url = 程序没法判读。
+
+    **不查语义、不查来源、不联网、不读盘。** 只查形状。
     """
     lic = man.get("license")
-    ok("V11 license 是字符串", type(lic).__name__, isinstance(lic, str),
-       "schema 3 必须带一行许可声明（字符串，不是对象树）")
-    if not isinstance(lic, str):
+    ok("V11 license 是 {id,url} 对象", type(lic).__name__, isinstance(lic, dict),
+       "schema 3 的许可必须是 {id, url} —— 名称 + 全文链接")
+    if not isinstance(lic, dict):
         if lic is None:
-            P.append("V11 缺 license（schema 3 必填）—— 一行 SPDX 表达式即可")
+            P.append("V11 缺 license（schema 3 必填）—— {id, url} 两项")
         return
-    ok("V11 license 非空", repr(lic)[:40], lic.strip() != "")
-    ok("V11 license 文法合法", repr(lic)[:40], parse_spdx(lic) is not None,
-       "算符必须大写；括号必须配对；不许冗余空白")
 
-    # 只额外查 entry 级的 role 与 excluded.why（它们与本协议其它部分同构，不引入新概念）
+    # ── id ──
+    lid = lic.get("id")
+    ok("V11 license.id 是字符串", type(lid).__name__, isinstance(lid, str))
+    if isinstance(lid, str):
+        ok("V11 license.id 非空", repr(lid)[:40], lid.strip() != "")
+        # id 可以是**复合表达式**（真实数据里 geometry/optim/splines 都是 A AND B），
+        # 所以判据是"能被 SPDX 文法解析"，不是"单个标识符"。
+        # 不校验是否在 SPDX 词表内 —— 词表会漂（v4 §3「平台容量不进协议」的同一条判据）。
+        ok("V11 license.id 是合法 SPDX 表达式", repr(lid)[:40],
+           parse_spdx(lid.strip()) is not None,
+           "形如 MIT / GPL-3.0-or-later / A AND B（不校验是否在 SPDX 词表内）")
+
+    # ── url：**必填**，且必须 https ──
+    lu = lic.get("url")
+    ok("V11 license.url 存在（必填）", repr(lu)[:60], lu is not None,
+       "必须有指向许可全文的链接 —— 各家正文不同，且会随世代更换")
+    if isinstance(lu, str):
+        ok("V11 license.url 以 https:// 开头", repr(lu)[:60],
+           lu.startswith("https://"), "明文 http 的许可声明不可信")
+        ok("V11 license.url 非空路径", repr(lu)[:60], len(lu) > len("https://"))
+    elif lu is not None:
+        ok("V11 license.url 是字符串", type(lu).__name__, False)
+
+    # ── entry 级覆盖：同样是 {id, url} ──
     ents = man.get("entries")
     for j, e in enumerate(ents if isinstance(ents, list) else []):
         if not isinstance(e, dict):
@@ -157,10 +187,15 @@ def _check_license(man, ok, P):
         tag = "[%s/%s] " % (e.get("product"), e.get("name"))
         if "license" in e:
             el = e["license"]
-            ok("V11 %sentries[%d].license 若存在必须是合法表达式" % (tag, j),
-               repr(el)[:30],
-               isinstance(el, str) and parse_spdx(el) is not None,
-               "entry 级覆盖也必须一行字符串")
+            ok("V11 %sentries[%d].license 是 {id,url}" % (tag, j),
+               type(el).__name__, isinstance(el, dict))
+            if isinstance(el, dict):
+                eid, eurl = el.get("id"), el.get("url")
+                ok("V11 %sentries[%d].license.id 非空字符串" % (tag, j),
+                   repr(eid)[:30], isinstance(eid, str) and eid.strip() != "")
+                ok("V11 %sentries[%d].license.url 是 https" % (tag, j),
+                   repr(eurl)[:50], isinstance(eurl, str) and eurl.startswith("https://"),
+                   "每个产物都要能点回它的许可全文")
         role = e.get("role", "payload")
         ok("V11 %srole ∈ {payload,license,notice}" % tag, repr(role), role in ROLES)
         exc = e.get("excluded")
@@ -433,28 +468,25 @@ def selftest():
     bad(lambda m: m.update(schema=1), "schema=1", "V10")
     bad(lambda m: m.update(schema=4), "schema=4", "V10")
 
-    # ── v1.1 许可证（V11）＋ SPDX 文法 ────────────────────────────────────────
-    # 文法：拒绝面（该报必报）
-    for e in ("A and B", "A OR", "OR A", "(A OR B", "A OR B)", "", "A WITH",
-              "A OR (B AND C", " A  OR  B ", "A B", "()", "A OR ()",
-              "A WITH B WITH C", "(A OR B) WITH X", "(A) WITH X",
-              "LicenseRef-", "LicenseRef- AND MIT"):
-        t("SPDX 文法拒：%r" % e, parse_spdx(e) is None)
-    # 文法：接受面（正常不报）
-    for e in ("MIT", "A OR B AND C", "A AND (B OR C)", "Apache-2.0 WITH LLVM-exception",
-              "LicenseRef-public-domain", "(A OR B) AND C",
+    # ── v1.1 许可证（V11：{id, url}）＋ SPDX 标识符形状 ──────────────────────
+    # 标识符形状：接受面 / 拒绝面
+    for e in ("LicenseRef-", "MIT OR", "", "MIT AND (", "A WITH B WITH C",
+              "(A OR B) WITH X", "LicenseRef- AND MIT"):
+        t("标识符/表达式形状拒：%r" % e, parse_spdx(e) is None)
+    for e in ("MIT", "LicenseRef-public-domain", "Apache-2.0 WITH LLVM-exception",
               "GPL-3.0-or-later AND BSD-3-Clause AND LicenseRef-public-domain"):
-        t("SPDX 文法收：%r" % e, parse_spdx(e) is not None)
+        t("标识符/表达式形状收：%r" % e, parse_spdx(e) is not None)
 
     def good3():
-        """最小合法 schema 3 manifest（许可 = 一行字符串）。"""
+        """最小合法 schema 3 manifest（许可 = {id, url}）。"""
         m = good()
         m["schema"] = 3
-        m["license"] = "GPL-3.0-or-later"
+        m["license"] = {"id": "GPL-3.0-or-later",
+                        "url": "https://www.gnu.org/licenses/gpl-3.0.html"}
         return m
 
     _, P3 = check(good3())
-    t("正常（schema 3 + 一行许可）⇒ 不报", not P3)
+    t("正常（schema 3 + {id,url}）⇒ 不报", not P3)
     if P3:
         print("      ", P3[:3])
 
@@ -464,20 +496,29 @@ def selftest():
         t("该报（%s）⇒ 必报 %s" % (label, want), any(want in x for x in P))
 
     bad3(lambda m: m.pop("license"), "缺 license", "V11")
-    bad3(lambda m: m.update(license={}), "license 是对象（旧树形）", "V11")
-    bad3(lambda m: m.update(license=""), "license 空串", "V11")
-    bad3(lambda m: m.update(license="GPL-3.0 and MIT"), "小写算符", "V11")
-    bad3(lambda m: m.update(license="(MIT"), "括号未闭合", "V11")
+    bad3(lambda m: m.update(license="GPL-3.0-or-later"), "license 是字符串（旧形态）", "V11")
+    bad3(lambda m: m["license"].pop("url"), "缺 url", "V11")
+    bad3(lambda m: m["license"].pop("id"), "缺 id", "V11")
+    bad3(lambda m: m["license"].update(id=""), "id 空串", "V11")
+    bad3(lambda m: m["license"].update(url=""), "url 空串", "V11")
+    bad3(lambda m: m["license"].update(url="http://gnu.org/gpl"), "url 明文 http", "V11")
+    bad3(lambda m: m["license"].update(url="https://"), "url 只有协议头", "V11")
+    bad3(lambda m: m["license"].update(url=123), "url 不是字符串", "V11")
+    bad3(lambda m: m["license"].update(id="GPL 3.0"), "id 含空格", "V11")
 
-    # entry 级覆盖：也是一行字符串
-    def _entry_lic(m):
-        m["entries"][1]["license"] = "MIT"
-    m = good3(); _entry_lic(m)
+    # entry 级覆盖：同样必须 {id, url}
+    def _entry_lic_ok(m):
+        m["entries"][1]["license"] = {"id": "MIT", "url": "https://opensource.org/license/mit"}
+    m = good3(); _entry_lic_ok(m)
     _, P = check(m)
-    t("正常（entry 级覆盖，一行字符串）⇒ 不报", not P)
+    t("正常（entry 级覆盖 {id,url}）⇒ 不报", not P)
 
-    bad3(lambda m: m["entries"][1].update(license="MIT or BSD"), "entry 小写算符", "V11")
-    bad3(lambda m: m["entries"][1].update(license=None), "entry license=null", "V11")
+    bad3(lambda m: m["entries"][1].update(license="MIT"),
+         "entry license 是字符串", "V11")
+    bad3(lambda m: m["entries"][1].update(license={"id": "MIT"}),
+         "entry 缺 url", "V11")
+    bad3(lambda m: m["entries"][1].update(license={"id": "MIT", "url": "ftp://x"}),
+         "entry url 非 https", "V11")
     bad3(lambda m: m["entries"][1].update(role="docs"), "role 非法", "V11")
     bad3(lambda m: m["entries"][0].update(excluded=[{"path": "x"}]), "excluded 缺 why", "V11")
 
@@ -487,11 +528,10 @@ def selftest():
     _, P = check(m)
     t("正常（excluded 带 why）⇒ 不报", not P)
 
-    # 关键：许可**不影响字节获取**（客户端只 GET <base>/<file>）
-    m = good3()
-    R0, _ = check(m)
-    t("许可声明不改变任何字节相关判据（V1–V10 用例数不变）",
-      sum(1 for lab, _d, _o in R0 if lab.startswith("V7") or lab.startswith("V1 ")) > 0)
+    # 关键：许可**不影响字节获取**（客户端仍只 GET <base>/<file>）
+    R0, _ = check(good3())
+    t("许可声明不改变任何字节判据（V1–V10 用例照常出现）",
+      any(lab.startswith("V7") for lab, _d, _o in R0))
 
     # ── 空输入 ──
     _, P = check([])

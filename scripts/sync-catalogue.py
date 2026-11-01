@@ -17,7 +17,7 @@
   G4 **V7 的字节身份用平台 digest 对**（零下载）：manifest 里每个 chunk 的
      sha256 == 平台该 asset 的 digest ⇒ 证明「manifest 说的块 == 平台上真有且是这份」
   G5 schema ∈ {2,3}（v1.1：3 另过 G7）
-  G7 许可必须 declared（unstated/refused 合法但不上架 —— 「坏的从未上架」）
+  G7 许可必须是 {id, url}（名称 + 全文链接）—— 缺任一即不上架
   G6 没有孤儿 asset（asset 不在任何 chunk 里 ⇒ 平台上有 manifest 不认识的文件）
 
 ## 失败即拒绝发布（不是跳过）
@@ -150,9 +150,15 @@ def verify_entry(repo, rel, manifest_bytes, assets_by_name, check_runner):
     lic_out = None
     if sch == 3:
         lic = man.get("license")
-        if not isinstance(lic, str) or not lic.strip():
-            return None, reasons + ["G7 缺许可声明（schema 3 必填一行 SPDX 表达式）"]
-        lic_out = lic.strip()
+        if not isinstance(lic, dict):
+            return None, reasons + ["G7 缺许可声明（schema 3 必填 {id, url}）"]
+        lid, lurl = lic.get("id"), lic.get("url")
+        if not isinstance(lid, str) or not lid.strip():
+            return None, reasons + ["G7 license.id 缺失或为空"]
+        if not isinstance(lurl, str) or not lurl.startswith("https://") \
+                or len(lurl) <= len("https://"):
+            return None, reasons + ["G7 license.url 必须是非空 https 链接（%r）" % (lurl,)]
+        lic_out = {"id": lid.strip(), "url": lurl}
     else:
         lic_out = None                    # schema 2 迁移期：许可未声明
 
@@ -333,8 +339,8 @@ def _selftest():
     case("★ 重复 id ⇒ SystemExit（两个 release 自称同一 id）",
          lambda: _dup_probe())
 
-    # ── G7 许可闸（v1.1：一行字符串）──────────────────────────────────────
-    def lic_man(schema=3, lic="GPL-3.0-or-later", drop=False):
+    # ── G7 许可闸（v1.1：{id, url}）────────────────────────────────────
+    def lic_man(schema=3, lic=None, drop=False):
         body = {"schema": schema, "id": "R/p@1", "chunkSize": 5242880,
                 "codecs": ["identity"], "products": {"p": {"form": "file"}},
                 "entries": [{"product": "p", "name": "a.bin", "bytes": 3,
@@ -343,7 +349,9 @@ def _selftest():
                                  {"part": 0, "file": "p__a.bin.identity.000",
                                   "bytes": 3, "sha256": "b" * 64}]}]}]}
         if schema == 3 and not drop:
-            body["license"] = lic
+            body["license"] = lic if lic is not None else {
+                "id": "GPL-3.0-or-later",
+                "url": "https://www.gnu.org/licenses/gpl-3.0.html"}
         raw = json.dumps(body).encode()
         assets = {"manifest.json": {"digest": "sha256:" + hashlib.sha256(raw).hexdigest()},
                   "p__a.bin.identity.000": {"digest": "sha256:" + "b" * 64}}
@@ -353,12 +361,19 @@ def _selftest():
         raw, assets = lic_man(**kw)
         return verify_entry("R", {"tag_name": "t"}, raw, assets, lambda m: [])
 
-    case("G7 schema 3 + 一行许可 ⇒ 上架，摘录就是那个字符串",
-         lambda: (lambda r: r[0] is not None and r[0]["license"] == "GPL-3.0-or-later")(run_lic()))
-    case("★ G7 缺 license ⇒ 不上架（合法 schema 3 也不行）",
-         lambda: run_lic(drop=True)[0] is None)
-    case("★ G7 license 空串 ⇒ 不上架", lambda: run_lic(lic="")[0] is None)
-    case("★ G7 license 是对象（旧树形）⇒ 不上架", lambda: run_lic(lic={"expr": "MIT"})[0] is None)
+    case("G7 schema 3 + {id,url} ⇒ 上架，摘录带两项",
+         lambda: (lambda r: r[0] is not None
+                  and r[0]["license"]["id"] == "GPL-3.0-or-later"
+                  and r[0]["license"]["url"].startswith("https://"))(run_lic()))
+    case("★ G7 缺 license ⇒ 不上架", lambda: run_lic(drop=True)[0] is None)
+    case("★ G7 缺 url ⇒ 不上架",
+         lambda: run_lic(lic={"id": "MIT"})[0] is None)
+    case("★ G7 缺 id ⇒ 不上架",
+         lambda: run_lic(lic={"url": "https://x/y"})[0] is None)
+    case("★ G7 明文 http url ⇒ 不上架",
+         lambda: run_lic(lic={"id": "MIT", "url": "http://x/y"})[0] is None)
+    case("★ G7 license 是字符串（旧形态）⇒ 不上架",
+         lambda: run_lic(lic="MIT")[0] is None)
     case("G7 schema 2（迁移期）⇒ 仍上架，许可为 null",
          lambda: (lambda r: r[0] is not None and r[0]["license"] is None)(run_lic(schema=2)))
     case("★ G5 schema 4 ⇒ 不上架",

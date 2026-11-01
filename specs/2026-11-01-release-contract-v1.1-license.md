@@ -94,7 +94,9 @@ License: ...
 
 ## 3. 协议形态（`schema: 3`）
 
-**许可就是一行字符串。** 没有对象树、没有三态、没有见证链。
+**许可 = 名称 + 指向全文的链接。** 一行字符串不够，因为各家正文不同、且会换代
+（用户 2026-11-01 裁定：「各家 license 文章不一样，改成指向链接，强制要求 release
+填写每个产物的 license 在那个仓库的链接，毕竟有过几代换许可证的场景」）。
 
 ```jsonc
 {
@@ -103,20 +105,30 @@ License: ...
   "chunkSize": 5242880,
   "codecs": ["zstd", "gzip", "identity"],
 
-  "license": "GPL-3.0-or-later AND BSD-3-Clause AND LicenseRef-public-domain",
+  "license": {
+    "id":  "GPL-3.0-or-later AND BSD-3-Clause AND LicenseRef-public-domain",
+    "url": "https://octave.sourceforge.io/optim/COPYING.html"
+  },
 
   "products": { ... },
-  "entries": [ ... ]          // 可选：某条 entry 的 "license": "MIT" 覆盖默认
+  "entries": [
+    {
+      "product": "forge", "name": "optim-1.6.3.tar.gz",
+      // 逐产物也可以各自指链接（真实数据里 FONT-RFN / NOTICE 这类常不同）
+      "license": {"id": "MIT", "url": "https://opensource.org/license/mit"},
+      ...
+    }
+  ]
 }
 ```
 
-### 3.1 三层各管一件事（**这是 v1.1 的全部设计**）
+### 3.1 三层各管一件事（**v1.1 的全部设计**）
 
 | 层 | 谁看 | 判据 |
 |---|---|---|
 | **字节** | 下载者 | `GET <base>/<file>` —— **一条链接，普通 GET，不认识许可** |
-| **manifest** | 需要完整性 / 发现的人 | `license` 一行字符串，**展示用**。不解析也能下包 |
-| **catalogue** | 上架闸 | 没有 `license` ⇒ **不收录** |
+| **manifest** | 需要完整性 / 发现 / 合规的人 | `license: {id, url}` —— **展示 + 可点回全文** |
+| **catalogue** | 上架闸 | `id` 与 `url` **缺任一 ⇒ 不收录** |
 
 **闸门只在上架时挡一次，不在每个消费者那里挡 N 次。**
 这是用户 2026-11-01 的纠正：「人家只想下个包一条链接」。
@@ -125,14 +137,19 @@ License: ...
 
 | 字段 | 必需 | 语义 |
 |---|---|---|
-| `license`（顶层） | ✅ schema 3 必填 | 一行 SPDX 表达式字符串。非空 |
-| `entries[].license` | ⭕ 可选 | 覆盖默认。同样是**一行字符串** |
+| `license.id` | ✅ | SPDX 表达式（可为复合：`A AND B`）。**不校验是否在 SPDX 词表内** |
+| `license.url` | ✅ | **必须是 `https://`**。指向该 release 的许可全文 |
+| `entries[].license` | ⭕ 可选 | 覆盖默认，同样是 `{id, url}` 两项 |
 | `entries[].role` | ⭕ 可选 | `payload`（默认）/ `license` / `notice` |
-| `entries[].excluded[]` | ⭕ 可选 | `{path, why}` —— 包内「原样有但不分发」（DEP-5 `Files-Excluded` 的对手） |
+| `entries[].excluded[]` | ⭕ 可选 | `{path, why}` —— 包内「原样有但不分发」 |
 
-**没有的东西**（都是我在草案里加过、又删掉的）：`status` 三态、`provenance` 见证链、
-`amends` 修订锚、`basis`、`resolver`、`anchor`、`source` 白名单。
-判据见 §10。
+**为什么 `url` 必填而不是可选**：
+
+1. **各家正文不同** —— `optim` 的 `COPYING.html` 不是标准 GPL 文本，含附加条款；
+2. **会换代** —— 上游几年一换许可，`id` 的字符串会过期，`url` 指向的**当前正文**不会；
+3. **GPL 系要求随分发附全文** —— 指向外部权威正文比在 16 个 release 里各存一份 GPL 副本更省；
+4. **实测 13/13 个真实包都已有现成链接**（`packages/*.json` 的 `fa-copyright` 链接的 `url` 字段），
+   迁移是转录不是调研。
 
 ### 3.3 客户端（**照旧，一行都没变**）
 
@@ -142,16 +159,13 @@ License: ...
 3. 逐字取 variant.chunks[i].file     # 绝不拼
 4. GET <base>/<file>                 # 普通 GET —— 与许可证无关
 5. 校验 bytes + 逐块 sha256 → 解码 → 拼接
+6. 界面显示 license.id，并把它做成指向 license.url 的链接
 ```
 
-**许可不出现在第 3–5 步的任何分支里。** 它只影响第 6 步之后的**展示**：
+**许可不出现在第 3–5 步的任何分支里。** 它只影响第 6 步的展示。
 
-```
-6. 界面显示 manifest.license（有就显示，没有就不显示）
-```
-
-**客户端不需要**：解析 SPDX、判断 `status`、联网核实、拒绝解包。
-`license` 是**字符串**，不是闸门。
+**客户端不需要**：解析 SPDX、联网核实、拒绝解包。
+`license` 是**两行元数据**，不是闸门。点开链接就能看全文 —— 那才是「各家各异」的正确解法。
 
 ---
 
@@ -159,11 +173,11 @@ License: ...
 
 | # | 不变量 | 反向用例（必须拒） |
 |---|---|---|
-| **V11** | `license` 是非空字符串，且是合法 SPDX 表达式（文法见 §4.1）。`entries[].license` 若存在同理。`role ∈ {payload,license,notice}`；`excluded[].why` 非空 | 缺 `license` / 空串 / `license` 是对象 / 小写算符 / 括号不配对 / `LicenseRef-` 空后缀 |
+| **V11** | `license` 是 `{id, url}` 对象；`id` 是能通过 SPDX 文法的非空字符串（可为复合）；`url` 是 `https://` 开头且非空。`entries[].license` 若存在同理。`role ∈ {payload,license,notice}`；`excluded[].why` 非空 | 缺 `license` / 缺 `id` / 缺 `url` / `url` 是 `http://` / `id` 空串 / `license` 是字符串（不含链接的旧形态） |
 
 **零下载、零联网。** V11 只读 manifest 结构。
 
-### 4.1 SPDX 表达式文法
+### 4.1 SPDX 表达式文法（`id` 用）
 
 ```
 expr := term (("AND" | "OR") term)*
@@ -172,19 +186,16 @@ id   := ^[A-Za-z0-9][A-Za-z0-9.+-]*$
 license-ref := ^LicenseRef-[A-Za-z0-9._-]+$
 ```
 
-- 算符必须**大写**（`AND` / `OR` / `WITH`）——小写是常见写法错误，直接拒
-- `WITH` 只作用于**单个标识符**（`(A OR B) WITH X` 非法），且**不许链式**（`A WITH B WITH C` 非法）
-- 优先级 `WITH` > `AND` > `OR`（与 SPDX 一致）；括号只用于显式分组
-- **客户端不需要实现这个文法** —— 它把 `license` 当字符串展示
+- 算符必须**大写**；`WITH` 只作用于单个标识符且不链式
+- **不校验是否在 SPDX 词表内**（词表会漂；与 v4 §3「平台容量不进协议」同一条判据）
+- **客户端不需要实现** —— 它只展示 `id` 字符串
 
 ### 4.2 为什么只有一条不变量
 
-因为**协议不负责验证声明是否真实**。它能做的是：
-- 要求声明存在且形状合法（V11）
-- 要求**没有声明的 release 不上架**（G7）
-
-「这个声明是不是真的」是发布方的责任，靠 `provenance` 之类的东西无法证明 ——
-那只会让 manifest 变复杂，同时给客户端增加"必须检查"的假义务。
+协议**不负责验证声明是否真实**，只保证：
+- 声明存在且形状合法（V11）
+- **没有声明的 release 不上架**（G7）
+- **有链接可点**（`url` 必填）—— 这是唯一的"可核"手段，且由人来看，不是协议来判断
 
 ---
 
@@ -194,7 +205,7 @@ license-ref := ^LicenseRef-[A-Za-z0-9._-]+$
 
 | 闸 | 判据 | 反向用例 |
 |---|---|---|
-| **G7** | schema 3 且 `license` 是非空字符串 | 缺 `license` / 空串 / 是对象 ⇒ **不进 catalogue**（记入 `excluded` 并写原因） |
+| **G7** | schema 3 且 `license` 有非空 `id` 与 `https://` 的 `url` | 缺任一 / `url` 非 https ⇒ **不进 catalogue**（记入 `excluded` 并写原因） |
 
 **「合法」与「可上架」是两件事**：schema 3 缺 `license` 的 manifest
 是**非法**（V11 红），所以 G7 这里其实是双保险；真正的分界在
@@ -203,10 +214,13 @@ license-ref := ^LicenseRef-[A-Za-z0-9._-]+$
 ### 5.2 catalogue 摘录
 
 ```jsonc
-"license": "GPL-3.0-or-later AND BSD-3-Clause AND LicenseRef-public-domain"
+"license": {
+  "id":  "GPL-3.0-or-later AND BSD-3-Clause AND LicenseRef-public-domain",
+  "url": "https://octave.sourceforge.io/optim/COPYING.html"
+}
 ```
 
-**就是一个字符串。** 不是对象、没有派生字段、没有 `manifest_sha256` 嵌套。
+**就是 manifest 里那两项，原样抄。** 不派生、不加时间戳、不嵌套 sha。
 
 ---
 
@@ -224,19 +238,21 @@ license-ref := ^LicenseRef-[A-Za-z0-9._-]+$
 
 ### 6.1 迁移真值（实测，来自 `packages/*.json` 的 `fa-copyright` 链接）
 
-| release | `license` 一行 |
-|---|---|
-| 10 × forge（cgi 除外） | `GPL-3.0-or-later` |
-| `forge-cgi` | `GPL-2.0-or-later` |
-| `forge-geometry` | `GPL-3.0-or-later AND BSL-1.0` |
-| `forge-matgeom` | `BSD-2-Clause-FreeBSD` |
-| `forge-optim` | `GPL-3.0-or-later AND BSD-3-Clause AND LicenseRef-public-domain` |
-| `forge-splines` | `GPL-3.0-or-later AND LicenseRef-public-domain` |
-| `supply-msl` | `BSD-3-Clause` |
-| `supply-pyodide` | `BSD-3-Clause` |
-| `LLVM-wasm v0.1.5` | `Apache-2.0 WITH LLVM-exception` |
+| release | `license.id` | `license.url` |
+|---|---|---|
+| 13 × forge | 见下 | 上游 `fa-copyright` 链接的 `url`（**全部已存在**） |
+| `forge-cgi` | `GPL-2.0-or-later` | `https://sourceforge.net/p/octave/cgi/ci/master/tree/COPYING` |
+| `forge-datatypes` | `GPL-3.0-or-later` | `https://github.com/pr0m1th3as/datatypes/blob/master/COPYING` |
+| `forge-geometry` | `GPL-3.0-or-later AND BSL-1.0` | `https://sourceforge.net/p/octave/geometry/ci/default/tree/COPYING` |
+| `forge-matgeom` | `BSD-2-Clause-FreeBSD` | `https://sourceforge.net/p/octave/matgeom/ci/master/tree/LICENSE.txt` |
+| `forge-optim` | `GPL-3.0-or-later AND BSD-3-Clause AND LicenseRef-public-domain` | `https://octave.sourceforge.io/optim/COPYING.html` |
+| `forge-splines` | `GPL-3.0-or-later AND LicenseRef-public-domain` | `https://sourceforge.net/p/octave/splines/ci/default/tree/COPYING` |
+| 其余 8 × forge | `GPL-3.0-or-later` | 各自上游 COPYING 链接 |
+| `supply-msl` | `BSD-3-Clause` | MSL 上游 |
+| `supply-pyodide` | `BSD-3-Clause` | PyPI 上游 |
+| `LLVM-wasm v0.1.5` | `Apache-2.0 WITH LLVM-exception` | LLVM 上游 |
 
-**13/13 条真实许可全部一行搞定，且全部通过 SPDX 文法**（2026-11-01 实测）。
+**13/13 条真实许可全部有现成 `id` + `url`，且全部通过 V11**（2026-11-01 实测）。
 迁移不是重做调研，是转录。
 
 ---
@@ -290,6 +306,8 @@ python3 tools/check-release-v4.py --selftest   # ⇒ 42 PASS / 0 fail
 | **每 entry 一个 license（无默认）** | 45 个分片写 45 次同一事实；v4 §2.2 已批判同类错误 |
 | **catalogue 存完整许可正文** | 第二个产地，必然漂移 |
 | **允许无许可的 release 上架** | 违反「坏的从未上架」 |
+| **只写 SPDX id、不要求 url** | 各家正文不同（`optim` 的 COPYING 含附加条款）、且会换代；只写 id 等于把「当前正文」换成一个会过期的字符串。用户裁定：「改成指向链接」 |
+| **把许可全文作为 release asset 强制分发** | 16 个 release 各存一份 GPL 副本；且 `url` 已能指回权威正文。全文可作可选 `role:"license"` entry，但不强制 |
 
 ---
 
