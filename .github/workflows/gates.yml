@@ -26,9 +26,11 @@ jobs:
           check-latest: true
       - name: 事实块与台账一致 + 发现式名录的全部闸门全绿
         run: |
-          # 钩子同款旋钮来源（einfacht-env.sh 先找钩子目录后找仓根）：
+          # 旋钮来源：**直接 source env 文件**。插件 einfacht-env.sh 靠 $0 定位
+          # env（钩子语境成立），被 Actions step 脚本 source 时 $0 是临时脚本
+          # ⇒ 静默加载空（缺文件不是错误是它的守卫）⇒ 旋钮回落三语默认名。
           # 不挂它，REFLECT_READMES 等回落 Einfacht 三语默认名 ⇒ 本地绿 CI 红。
-          . reflect-hooks/einfacht-env.sh
+          . reflect-hooks/Einfacht.env
           # 台账自证的**仪器**：make-manifest-v4.py 依赖 zstandard（本仓实测机器
           # 自带，CI 必须显式装 —— 仪器缺席时复跑闸门抓到的是"命令报错"，
           # 不是"值变了"，二者都红，但前者是环境缺陷不是事实翻案）。
