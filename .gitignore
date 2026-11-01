@@ -8,6 +8,16 @@
 !README.md
 !/vendor/
 
+# ===== 契约正典与工具链（2026-11-01 自 extra-content 移交落库）=====
+!/specs/
+!/specs/*.md
+!/tools/
+!/tools/*.py
+!/questions/
+!/questions/*.md
+!/site/
+!/site/*.md
+
 # 放行整个目录（含其下所有内容）时取消注释：
 # !/src/
 # 只放行目录内部分内容时：
