@@ -1,0 +1,5 @@
+{
+  "schema": 1,
+  "note": "本站不收录任何 release 件（0 字节托管）。包字节一律从条目 base（GitHub release 直链）或 base_proxy（集群反代）获取：GET <base>manifest.json 起，其余文件名逐字取自 manifest。base/base_proxy 必须 https 且以 / 结尾。",
+  "releases": []
+}

@@ -17,6 +17,14 @@
 !/questions/*.md
 !/site/
 !/site/*.md
+!/site/*.json
+# 构建产物只进 deploy 分支，不进 main
+/site/dist/
+
+# ===== 部署自动更新链（2026-11-01）=====
+!/.github/
+!/.github/workflows/
+!/.github/workflows/*.yml
 
 # 放行整个目录（含其下所有内容）时取消注释：
 # !/src/

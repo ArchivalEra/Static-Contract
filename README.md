@@ -1,6 +1,9 @@
 # Static-Contract · 静态分发契约
 
-Octave 集群的**静态分发契约权威仓**：协议正典、工具链、悬案台账、分发站（在建）都在这里。
+Octave 集群的**静态分发契约权威仓**：协议正典、工具链、悬案台账、元数据站都在这里。
+
+> **身份裁定（最最核心）：本仓只是契约维护者。站点不收录任何 release 件（0 字节托管）；
+> 所有的包，要么去 GitHub 拿（release 直链），要么走反代（集群边缘）。**
 
 > **一个 release = 一个不可变 tag = 一份 `manifest.json` + N 个扁平 asset。**
 > 名字只允许 GitHub 不会改写的字符（白名单）⇒ `manifest.file` 与真实 asset 名恒等。
@@ -30,9 +33,9 @@ Octave 集群的**静态分发契约权威仓**：协议正典、工具链、悬
 | `specs/` | 契约正典（v4）+ v0–v3 演化史 + 收纳审计（自 Octave-Extra-Content 移交，原始材料未改） |
 | `tools/` | v4 生成器与校验器（同上） |
 | `questions/` | 悬案台账（`05`：zstd vs gzip 在 EdgeOne 真链路的实测裁决） |
-| `site/` | 分发站（在建；方案见 `site/PLAN.md`） |
+| `site/` | 元数据站源：catalogue 数据源 + 建站方案（**不收录任何 release 件**，见 `site/PLAN.md`） |
 | `mail/` | 跨仓邮件收件箱（规矩见 `mail/README.md`：只追加不删 / 编号递增 / 投递≠提交） |
-| `scripts/` | 读信工具等零依赖脚本 |
+| `scripts/` | 零依赖脚本：`mail-read.py`（读信）、`build-site.py`（建站，构建器自证 10/10） |
 | `vendor/Einfacht` | 反幻觉事实系统套件（上游 `6e4e6e8`，快照 vendor） |
 
 ## 本仓在集群里的位置
@@ -52,6 +55,9 @@ Octave 集群的**静态分发契约权威仓**：协议正典、工具链、悬
 
 ## 状态
 
-**未试点**：没走完「生产者发 release → 分发方建站 → 消费者改链接」全链。
+**未试点**：没走完「生产者发 release → catalogue 收录 → 消费者改链接」全链。
 未决项：U1 codecs 顺序（悬案 05）、U2 chunkSize 按件可配、U3 asset 名 product 前缀、U4 其余仓接入排期。
-建站方案与试点验收判据：`site/PLAN.md`。
+
+**部署**：deploy 分支 = 纯站点产物，CF Pages / EdgeOne Pages 的部署出口。
+自动更新链：push main → `sync-deploy` workflow（构建器自证 + 构建 + 0 字节闸门）→ orphan 强推 deploy → 托管方自动重建。
+方案与试点验收判据：`site/PLAN.md`。

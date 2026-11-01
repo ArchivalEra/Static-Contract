@@ -1,0 +1,45 @@
+name: sync-deploy
+# main push → 自证 + 构建站点 → orphan 单提交强推 deploy 分支。
+# CF Pages / EdgeOne Pages 监听 deploy 分支，从而实现「main 修改完 deploy 就更新」。
+# deploy 分支永远只有一个无父提交（当前站点产物），无历史膨胀。
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-deploy
+  cancel-in-progress: true
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 构建器自证（含「不收录 release 件」闸门自证）
+        run: python3 scripts/build-site.py --selftest
+
+      - name: 构建站点
+        run: python3 scripts/build-site.py --out site/dist
+
+      - name: 发布到 deploy 分支（orphan 单提交，强推）
+        env:
+          TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          d=$(mktemp -d)
+          cp -a site/dist/. "$d/"
+          cd "$d"
+          git init -q -b deploy
+          git add -A
+          git -c user.name=static-contract-bot \
+              -c user.email=ArchivalEra@users.noreply.github.com \
+              commit -qm "deploy: sync from main@${SHA::7} [skip ci]"
+          git remote add origin "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push -q --force origin deploy
