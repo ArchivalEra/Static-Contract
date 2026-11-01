@@ -36,6 +36,8 @@ Octave 集群的**静态分发契约权威仓**：协议正典、工具链、悬
 | `STATE.md` | 活状态（Einfacht 生态格式：只写「现在是什么」，断言旁带复跑方式） |
 | `maintaince.md` | 方向与地图（维护边界 / 例行 / 红线） |
 | `site/` | 元数据站数据源（`catalogue.json`；**不收录任何 release 件**） |
+| `zreflect/` | Einfacht 事实系统平台（自 `vendor/Einfacht` `6e4e6e8`）+ 本仓数据层收集器；台账 `FACTS.json`（**别手改**，跑 `zreflect/facts.py`） |
+| `reflect-hooks/` | git 钩子与旋钮载体（装：`sh reflect-hooks/install.sh`；pre-commit 重渲染机器块 + commit 相位全部闸门） |
 | `mail/` | 跨仓邮件收件箱（规矩见 `mail/README.md`：只追加不删 / 编号递增 / 投递≠提交） |
 | `scripts/` | 零依赖脚本：`mail-read.py`（读信）、`build-site.py`（建站，构建器自证 10/10） |
 | `vendor/Einfacht` | 反幻觉事实系统套件（上游 `6e4e6e8`，快照 vendor） |
@@ -54,6 +56,8 @@ Octave 集群的**静态分发契约权威仓**：协议正典、工具链、悬
 
 1. **「测不到」≠「不存在」**——任何「不存在」的结论，必须先有同类肯定用例证明探针有效。
 2. **数值/行为只认实测，复跑方式写在断言旁边**。写不出复跑方式的句子只能当历史读。
+3. **机器块是机器维护的**——`STATE.md` 文末块由 `zreflect/facts.py --render-doc` 渲染，
+   正文数字只许 `[[键名]]` 引用；闸门执行面读声明（`registry --run commit`），off 不是通过。
 
 ## 状态
 

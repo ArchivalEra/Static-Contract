@@ -8,7 +8,13 @@
 !README.md
 !STATE.md
 !maintaince.md
+!FACTS.json
+!retractions.json
 !/vendor/
+
+# ===== Einfacht 事实系统（2026-11-01 接线，平台自 vendor/Einfacht 6e4e6e8）=====
+!/zreflect/
+!/reflect-hooks/
 
 # ===== 契约正典与工具链（2026-11-01 自 extra-content 移交落库）=====
 !/specs/

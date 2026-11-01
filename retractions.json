@@ -1,0 +1,11 @@
+{
+ "_why": [
+  "翻案台账：每条 = 一条**已被推翻**的断言。`text` 是它的特征片段（会被当搜索串在活状态文档里找）。",
+  "`why` 说它为什么错，`evidence` 给复跑方式或出处，`fixed_in` 说现在哪里说对了。",
+  "`check_retractions.py` 的判据：活状态文档里只要出现 `text`，该行必须带更正标记，",
+  "否则报红 —— 被推翻的断言不许悄悄回来当现状。本仓目前无翻案记录；",
+  "第一条翻案发生时，从这里开始记（改动需过 --accept-changes 类守卫的对应闸门）。",
+  "复跑：python3 zreflect/check_retractions.py"
+ ],
+ "retractions": []
+}

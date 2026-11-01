@@ -17,6 +17,8 @@ Octave 集群的**静态分发契约权威仓**：协议正典 + 工具链 + 元
 | 想知道 | 去哪 |
 |---|---|
 | 现在是什么 | `STATE.md`（活状态） |
+| 数字从哪来 | `FACTS.json`（`zreflect/facts.py` 量测；正文只许 `[[键名]]` 引用） |
+| 闸门名录 | `STATE.md` 文末机器块（发现式派生，勿手写） |
 | 协议怎么用 | `README.md`；正典 `specs/2026-10-30-release-contract-v4.md`（§4 客户端算法） |
 | 协议什么改不得 | 正典 §3 不变量 V1–V10 + §8 被否方案判据 |
 | 站点收录了什么 | `site/catalogue.json`（唯一数据源，构建器只读它） |
@@ -42,6 +44,10 @@ Octave 集群的**静态分发契约权威仓**：协议正典 + 工具链 + 元
 
 ## 例行
 
+- **提交**：钩子已挂（`core.hooksPath=reflect-hooks`）——重渲染机器块 + 跑 commit 相位
+  全部闸门（off 不是通过，输出里单列）。改了量法或数值，先 `python3 zreflect/facts.py`
+  重测（改口逐条 `--accept-changes=k1,k2` 放行，掉条 `--allow-drop`）；CI（gates workflow）
+  在远端执行同一判据，`--no-verify` 绕不过它。
 - **收录一个 release**：向 `site/catalogue.json` 加条目
   （`id` 唯一无空白；`base` / `base_proxy` 必须 `https://` 且以 `/` 结尾）
   → push main。`sync-deploy` 自动重建 deploy，部署侧零手工。
