@@ -53,10 +53,11 @@ Octave 集群的**静态分发契约权威仓**：协议正典 + 工具链 + 元
   文档跟着代码走，不是仪式：改了行为不同步文档，文档从那一刻起就在撒谎。
 - **收录一个 release**：向 `site/catalogue.json` 加条目
   （`id` 唯一无空白；`base` / `base_proxy` 必须 `https://` 且以 `/` 结尾）
-  → push main。`sync-deploy` 自动重建 deploy，部署侧零手工。
+  → push main。`sync-deploy` 自动重建，**一份 `site/dist` 三通道并行**：
+  deploy 分支（CF / EdgeOne 监听）+ GitHub Pages（workflow 直发），部署侧零手工。
+- **部署出口**：deploy 分支 = 纯站点产物（orphan 单提交），只由 workflow 写；
+  GitHub Pages 由同一 workflow 正面部署 —— 三个通道内容逐字同源。
 - **改正典**：先开 `questions/` 悬案（挂可执行结算判据）→ 裁定 → 改正典，
   并在 `STATE.md` 记裁定原话与日期。**被否方案判据必须留在正典 §8，防将来重开。**
 - **红线**：任何 release 件（tar/zip/wasm/whl/分片）不进 main，也不进 deploy——
   构建闸门会红（`scripts/build-site.py` 产物扫描）。
-- **部署出口**：deploy 分支 = 纯站点产物（orphan 单提交），只由 workflow 写，
-  任何人不手工碰它。

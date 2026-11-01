@@ -34,12 +34,19 @@
   `tools/*.py` + `README.md` + `STATE.md` + `maintaince.md`，**无任何 release 件**。
   数据源 `site/catalogue.json`，当前收录 [[catalogue_releases]] 条（试点链第 1 环未跑）。
   构建复跑：`python3 scripts/build-site.py --out site/dist`（确定性构建，两次逐字节一致，自证覆盖）。
-- **部署链**：push main → `sync-deploy` workflow（自证 + 构建 + 0 字节闸门）→
-  orphan 单提交强推 `deploy` 分支 → CF Pages / EdgeOne Pages 监听 deploy 自动重建。
-  实测：run `41263566662` success（9s，2026-11-01）；deploy 树 11 文件、无父提交、
-  提交信息带 main 源 SHA。复跑：`gh run list --workflow sync-deploy --repo ArchivalEra/Static-Contract`
-  及 `git fetch origin deploy && git log --oneline origin/deploy`。
-  **CF / EdgeOne 尚未接入**（等安排）；反代 `base_proxy` 字段已预留未填。
+- **部署链（三通道并行，一份产物）**——用户裁定 2026-11-01：「pages + cf pages + edgeone
+  三条并行且只需要出一份产物就能三地部署」。push main → `sync-deploy` workflow
+  （构建器自证 + 构建 + 0 字节闸门）→ **同一份 `site/dist`** 走两条腿：
+  ① orphan 单提交强推 `deploy` 分支（CF Pages / EdgeOne Pages 监听，**待接入**）；
+  ② `actions/deploy-pages` 正面部署 GitHub Pages（2026-11-01 实测启用，
+  `https://archivalera.github.io/Static-Contract/`，`build_type=workflow`，复跑：
+  `gh api repos/ArchivalEra/Static-Contract/pages --jq .html_url`）。
+  站点全相对链接，子路径托管无害。实测：run `41263566662` success（首跑，2026-11-01），
+  复跑 `gh run list --workflow sync-deploy --repo ArchivalEra/Static-Contract`。
+  平台约束（shirone `mail/read/002` 实测，复跑见原信 §5）：EdgeOne 免费版 Pages
+  无自定义响应头、无 purge、单文件 ≤ 25MB —— 本站产物为文档级 KB 件、客户端只依赖
+  普通 GET，字节侧头语义由 GitHub release 直链/反代承担，缺口不触本站；
+  反代 `base_proxy` 字段仍预留未填。
 - **事实系统**（2026-11-01 接线）：pre-commit 重渲染机器块 + 跑 commit 相位全部闸门
   （实测 ran 8 / off 6 / failed 0；复跑 `sh reflect-hooks/pre-commit`）。off 态明说未启用、
   不算通过（ab / instruments / invariants / locks / pins / world —— 各自的旋钮文件未配，

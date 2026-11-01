@@ -10,6 +10,8 @@ on:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 concurrency:
   group: sync-deploy
@@ -43,3 +45,14 @@ jobs:
               commit -qm "deploy: sync from main@${SHA::7} [skip ci]"
           git remote add origin "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push -q --force origin deploy
+
+      # ── 通道三：GitHub Pages ──
+      # 同一份 site/dist（构建一次，与 deploy 分支逐字节同源）。三通道并行：
+      #   ① deploy 分支 → CF Pages / EdgeOne Pages（外部托管方监听）
+      #   ② 本段：actions/deploy-pages 正面部署（无需 build_type=branch）
+      # 用户裁定（2026-11-01）：pages + cf pages + edgeone 三条并行，一份产物三地部署。
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/dist
+      - uses: actions/deploy-pages@v4
