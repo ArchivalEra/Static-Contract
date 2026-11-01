@@ -33,8 +33,8 @@ Octave 集群的**静态分发契约权威仓**：协议正典、工具链、悬
 
 | 目录 | 内容 |
 |---|---|
-| `specs/` | 契约正典（v4）+ v0–v3 演化史 + 收纳审计（自 Octave-Extra-Content 移交，原始材料未改）+ **v1.1 许可证协议定稿**（迁移中：已发 extra-content `mail/119` 与 LLVM-wasm `mail/018`） |
-| `tools/` | v4 生成器与校验器（含 v1.1 许可不变量 V11，自证 35/35） |
+| `specs/` | 契约正典（v4）+ v0–v3 演化史 + 收纳审计（自 Octave-Extra-Content 移交，原始材料未改）+ **v1.1 许可证协议定稿**（迁移中：extra-content 15 个 release 已升 schema 3；LLVM 已发绿灯） |
+| `tools/` | v4 生成器与校验器（含 v1.1 许可不变量 V11，自证 37/37） |
 | `questions/` | 悬案台账（`05`：zstd vs gzip 在 EdgeOne 真链路的实测裁决） |
 | `STATE.md` | 活状态（Einfacht 生态格式：只写「现在是什么」，断言旁带复跑方式） |
 | `maintaince.md` | 方向与地图（维护边界 / 例行 / 红线） |

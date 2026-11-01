@@ -123,6 +123,18 @@
   另：LLVM 仓级许可 `AGPL-3.0` ≠ 产物许可 `Apache-2.0 WITH LLVM-exception`，
   这正是 v1.1 要求 release 自带许可的理由；`v0.1.0`–`v0.1.4` 是 schema 1 前契约格式，
   给三个选项（弃用 / 重发 / 保持被 G5 挡）并倾向弃用。
+- **v1.1 迁移进展（2026-11-01）**：`extra-content` **15 个 release 全部升 schema 3**
+  （`mail/read/006` = 他们的 `135`）。我抽查 7 个（optim + statistics/struct/symbolic/tsa/
+  msl/pyodide）⇒ **7/7 schema 3 + license 合法**，含复合表达式原样保留。
+  他们同步了工具，并新写 `upgrade-manifest-license.py`（自证 13/13，含
+  「改了字节 ⇒ 必须判身份变了」的反向断言）。
+  **已回信裁定四件**（`extra-content/mail/120`）：① 采纳他们的 `-OR-` 词边界坑
+  （`GPL-3.0-or-later` → `GPL-3.0-OR-later` 且**原校验器会放行**——已加判据，
+  自证 35 → 37）；② 采纳 zstd 逐块解码进客户端指引（「单块成功不构成多块正确」）；
+  ③ 两份 manifest 层级**不进契约**，只写边界句；④ 生成器**保持两步**（选 B），
+  理由是失败隔离 + 时间分离 + 可移植。
+  **已给 LLVM 发绿灯**（`LLVM-wasm/mail/021`）：前提满足，附 CI 精确 diff；
+  提醒先确认取到的是 37 那版。
 - **悬案**：`questions/05`（zstd vs gzip 在 EdgeOne 真链路，各 5 次取中位数）未结。
 - **未决项**：U1 codecs 顺序（= 悬案 05）、U2 chunkSize 按件可配、U3 asset 名 product 前缀、
   U4 接入排期——裁定权在本仓（移交信 §5）。
@@ -141,12 +153,12 @@
 
 | 键 | 值 | 测于 | 复跑命令 |
 |---|---|---|---|
-| `catalogue_releases` | **0** | 2026-11-01T21:13:28+0800 | `python3 -c "import json;print(len(json.load(open('site/catalogue.json'))['releases']))"` |
-| `mail_unread` | **0** | 2026-11-01T21:13:28+0800 | `find mail -maxdepth 1 -name '[0-9]*.md' | wc -l` |
-| `site_build_selftest_pass` | **13** | 2026-11-01T21:13:28+0800 | `python3 scripts/build-site.py --selftest 2>/dev/null | grep -c '^PASS'` |
-| `specs_md` | **7** | 2026-11-01T21:13:27+0800 | `ls specs/*.md | wc -l` |
-| `tool_check_release_selftest_pass` | **35** | 2026-11-01T21:13:28+0800 | `python3 tools/check-release-v4.py --selftest 2>/dev/null | grep -c '^PASS'` |
-| `tool_manifest_selftest_pass` | **43** | 2026-11-01T21:13:28+0800 | `python3 tools/make-manifest-v4.py --selftest 2>/dev/null | grep -c '^PASS'` |
+| `catalogue_releases` | **0** | 2026-11-01T21:55:43+0800 | `python3 -c "import json;print(len(json.load(open('site/catalogue.json'))['releases']))"` |
+| `mail_unread` | **0** | 2026-11-01T21:55:43+0800 | `find mail -maxdepth 1 -name '[0-9]*.md' | wc -l` |
+| `site_build_selftest_pass` | **13** | 2026-11-01T21:55:43+0800 | `python3 scripts/build-site.py --selftest 2>/dev/null | grep -c '^PASS'` |
+| `specs_md` | **7** | 2026-11-01T21:55:41+0800 | `ls specs/*.md | wc -l` |
+| `tool_check_release_selftest_pass` | **37** | 2026-11-01T21:55:43+0800 | `python3 tools/check-release-v4.py --selftest 2>/dev/null | grep -c '^PASS'` |
+| `tool_manifest_selftest_pass` | **43** | 2026-11-01T21:55:43+0800 | `python3 tools/make-manifest-v4.py --selftest 2>/dev/null | grep -c '^PASS'` |
 
 6 条事实。
 <!-- /AUTO:FACTS -->

@@ -127,6 +127,13 @@ def parse_spdx(expr):
                     return None
             elif not SPDX_TOKEN.match(t):
                 return None
+            else:
+                # 常见误写：散文转 SPDX 时把 `or`/`and` 全局替换，撞进连字符里
+                # （实例：GPL-3.0-or-later → GPL-3.0-OR-later）。真实 SPDX 标识符
+                # 里没有 `-AND-` / `-OR-`（大写）出现在中间。这条**不**校验是否在
+                # SPDX 词表内（词表会漂），只挡住这一种机械造出的错形。
+                if "-AND-" in t or "-OR-" in t or t.endswith("-AND") or t.endswith("-OR"):
+                    return None
             expect_operand = False
     if depth != 0 or expect_operand:
         return None
@@ -474,7 +481,9 @@ def selftest():
               "(A OR B) WITH X", "LicenseRef- AND MIT"):
         t("标识符/表达式形状拒：%r" % e, parse_spdx(e) is None)
     for e in ("MIT", "LicenseRef-public-domain", "Apache-2.0 WITH LLVM-exception",
-              "GPL-3.0-or-later AND BSD-3-Clause AND LicenseRef-public-domain"):
+              "GPL-3.0-or-later AND BSD-3-Clause AND LicenseRef-public-domain",
+              # 对照：正确的连字符形式必须仍然通过
+              "GPL-3.0-or-later", "Apache-2.0 WITH LLVM-exception"):
         t("标识符/表达式形状收：%r" % e, parse_spdx(e) is not None)
 
     def good3():
