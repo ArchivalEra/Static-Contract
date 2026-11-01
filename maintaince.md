@@ -48,6 +48,15 @@ Octave 集群的**静态分发契约权威仓**：协议正典 + 工具链 + 元
   全部闸门（off 不是通过，输出里单列）。改了量法或数值，先 `python3 zreflect/facts.py`
   重测（改口逐条 `--accept-changes=k1,k2` 放行，掉条 `--allow-drop`）；CI（gates workflow）
   在远端执行同一判据，`--no-verify` 绕不过它。
+- **跨仓通信**：**等待条件必须是可执行的一行命令**（LLVM `mail/024` §5 的建议，已采纳）。
+  说「已就绪 / 已同步 / 已上线」时必须附**它现在返回什么**：
+  ```bash
+  # 工具同步
+  git clone --depth 1 <repo> /tmp/x && python3 /tmp/x/tools/check-release-v4.py --selftest | tail -1
+  # 通道内容
+  for u in <ch1> <ch2> <ch3>; do curl -s "$u/index.html" | grep -o 'BUILD [0-9a-f]*'; done
+  ```
+  理由：下游只能测到它 `git clone` 到的东西，**「我放好了」对它是不可见的**。
 - **推送**：`REFLECT_READMES`（= `README.md`）随**每批推送同批更新**——「同批」判据
   单条目不退化（check_readme_sync 自证明写），pre-push 与 CI 同判据。
   文档跟着代码走，不是仪式：改了行为不同步文档，文档从那一刻起就在撒谎。

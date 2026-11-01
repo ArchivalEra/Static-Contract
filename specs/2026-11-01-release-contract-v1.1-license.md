@@ -266,7 +266,31 @@ V11 只查**形状**（合法 SPDX + https url）。它能抓住的与抓不住�
 `driver/*.mjs` 与 `LICENSE` 的 `AGPL-3.0-or-later`；而另一封信把 emscripten
 写成 `BSD-3-Clause`，实际是 `MIT OR NCSA`。**两处都是靠人读正文发现的，不是校验器。**
 
-### 4.6 「不可变」是地基，不是约束
+### 4.6 可选：`license.verified`（人核留痕，**不是判据**）
+
+协议不校验 SPDX 词表（词表会漂）。但「这个 id 为什么对」可以留痕：
+
+```jsonc
+"license": {
+  "id": "MIT OR NCSA",
+  "url": "https://github.com/emscripten-core/emscripten/blob/main/LICENSE",
+  "verified": {                       // ⭕ 可选
+    "by": "LLVM-wasm",
+    "at": "2026-11-01",
+    "how": "spdx/license-list-data licenses.md:483 + text/NCSA.txt 与包内正文同源"
+  }
+}
+```
+
+**它不参与 V11、不影响下载路径、不要求机器判据。** 作用只有一个：
+让下一个人不必重查。
+
+**为什么不是 `provenance` 见证链的复活**：见证链要求「证据锚到 entry 的 sha256」
+并参与不变量校验；`verified` 是一句人可以核的话 + 出处，**协议不读它**。
+（来源：`LLVM-wasm` `mail/024` §1 —— 它把 `NCSA` 核到官方列表第 483 行，
+我复跑确认。这个字段是把那次核查的形状固化下来。）
+
+### 4.7 「不可变」是地基，不是约束
 
 历史 release（`schema: 1` 的前契约格式）**不改造** —— 重发成 schema 3 要整体重排
 `products` / `entries` / `variants`，而**字节不该动**。
@@ -276,7 +300,7 @@ V11 只查**形状**（合法 SPDX + https url）。它能抓住的与抓不住�
 
 ⇒ 它们的正确归宿是**被 G5 挡在 catalogue 外**，而不是被"修好"。
 
-### 4.7 为什么只有一条不变量
+### 4.8 为什么只有一条不变量
 
 协议**不负责验证声明是否真实**，只保证：
 - 声明存在且形状合法（V11）
