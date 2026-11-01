@@ -94,6 +94,8 @@ License: ...
 
 ## 3. 协议形态（`schema: 3`）
 
+**许可就是一行字符串。** 没有对象树、没有三态、没有见证链。
+
 ```jsonc
 {
   "schema": 3,
@@ -101,304 +103,198 @@ License: ...
   "chunkSize": 5242880,
   "codecs": ["zstd", "gzip", "identity"],
 
-  "license": {                          // ← 整个 release 的默认声明
-    "expr": "GPL-3.0-or-later AND BSD-3-Clause AND LicenseRef-public-domain",
-    "status": "declared",               // declared | unstated | refused
-    "provenance": {
-      "resolver": "spdx-norm@1",        // 归一化规则版本（可追溯）
-      "sources": [
-        {
-          "source": "producer-registry",   // 见 §4.2 白名单
-          "anchor": {"product": "meta", "name": "meta__optim.json"},
-          "anchor_sha256": "<该 entry 的 sha256>",
-          "basis": "extracted",         // extracted | inherited | declared | upstream
-          "copyright": "2008-2023 The Octave-Forge developers"
-        }
-      ]
-    }
-  },
+  "license": "GPL-3.0-or-later AND BSD-3-Clause AND LicenseRef-public-domain",
 
   "products": { ... },
-  "entries": [
-    {
-      "product": "meta", "name": "meta__optim.json",
-      "bytes": 3120, "sha256": "...",
-      "role": "license",                // payload | license | notice（可选，默认 payload）
-      "variants": [ ... ]
-    },
-    {
-      "product": "wasm32", "name": "numgradient.oct",
-      "bytes": 17025, "sha256": "...",
-      "license": "MIT",                 // ← 仅需要时覆盖；缺省继承 manifest.license.expr
-      "variants": [ ... ]
-    }
-  ]
+  "entries": [ ... ]          // 可选：某条 entry 的 "license": "MIT" 覆盖默认
 }
 ```
 
-### 3.1 字段定义
+### 3.1 三层各管一件事（**这是 v1.1 的全部设计**）
+
+| 层 | 谁看 | 判据 |
+|---|---|---|
+| **字节** | 下载者 | `GET <base>/<file>` —— **一条链接，普通 GET，不认识许可** |
+| **manifest** | 需要完整性 / 发现的人 | `license` 一行字符串，**展示用**。不解析也能下包 |
+| **catalogue** | 上架闸 | 没有 `license` ⇒ **不收录** |
+
+**闸门只在上架时挡一次，不在每个消费者那里挡 N 次。**
+这是用户 2026-11-01 的纠正：「人家只想下个包一条链接」。
+
+### 3.2 字段
 
 | 字段 | 必需 | 语义 |
 |---|---|---|
-| `license` (顶层) | ✅ | 默认许可声明对象 |
-| `license.expr` | `status=="declared"` 时必需 | SPDX 表达式（文法见 §4.1）。非空字符串 |
-| `license.status` | ✅ | `declared`（有明确许可）/ `unstated`（查不到，未声明）/ `refused`（上游明确拒绝声明） |
-| `license.reason` | `status != "declared"` 时必需 | 非空字符串，说明为什么不知道。**空白 ≠ 未知** |
-| `license.provenance.sources[]` | `status=="declared"` 时 ≥1 条 | 声明依据，见 §4.2 |
-| `license.provenance.resolver` | ✅ 建议 | 归一化规则版本（如 `spdx-norm@1`），用于复现 |
-| `entries[].license` | ⭕ 可选 | 覆盖默认表达式（字符串）。**只有真需要时写** |
+| `license`（顶层） | ✅ schema 3 必填 | 一行 SPDX 表达式字符串。非空 |
+| `entries[].license` | ⭕ 可选 | 覆盖默认。同样是**一行字符串** |
 | `entries[].role` | ⭕ 可选 | `payload`（默认）/ `license` / `notice` |
 | `entries[].excluded[]` | ⭕ 可选 | `{path, why}` —— 包内「原样有但不分发」（DEP-5 `Files-Excluded` 的对手） |
 
-### 3.2 解析规则（客户端唯一需要知道的一条）
+**没有的东西**（都是我在草案里加过、又删掉的）：`status` 三态、`provenance` 见证链、
+`amends` 修订锚、`basis`、`resolver`、`anchor`、`source` 白名单。
+判据见 §10。
+
+### 3.3 客户端（**照旧，一行都没变**）
 
 ```
-license_of(entry) = entry["license"] if "license" in entry else manifest["license"]["expr"]
+1. GET <base>/manifest.json          # 想发现的话
+2. 校验 schema / V1–V11（本地，0 请求）
+3. 逐字取 variant.chunks[i].file     # 绝不拼
+4. GET <base>/<file>                 # 普通 GET —— 与许可证无关
+5. 校验 bytes + 逐块 sha256 → 解码 → 拼接
 ```
 
-**没有第二跳，没有优先级，没有 glob。** 这就是全部。
+**许可不出现在第 3–5 步的任何分支里。** 它只影响第 6 步之后的**展示**：
 
-`manifest.license.status != "declared"` 时，所有 entry 解析为同一状态
-（`unstated` / `refused`），客户端按策略处理（默认拒绝解包，见 §5）。
+```
+6. 界面显示 manifest.license（有就显示，没有就不显示）
+```
+
+**客户端不需要**：解析 SPDX、判断 `status`、联网核实、拒绝解包。
+`license` 是**字符串**，不是闸门。
 
 ---
 
-## 4. 不变量（V11–V14，全部零下载）
-
-延续 v4 的 V1–V10 编号。**全部是纯 manifest 判据，不需要网络、不需要磁盘。**
+## 4. 不变量（V11，唯一一条）
 
 | # | 不变量 | 反向用例（必须拒） |
 |---|---|---|
-| **V11** | `license` 必须存在且为对象；`status ∈ {declared, unstated, refused}`；`declared` ⇔ `expr` 是非空字符串且能解析为合法 SPDX 表达式；非 `declared` ⇒ **必须**有非空 `reason`，且**不得**有 `expr` | 缺 `license` / `status` 不在闭集 / `unstated` 带 `expr`（自相矛盾）/ `unstated` 无 `reason` |
-| **V12** | **白名单与 basis 无条件生效**（与 `status` 无关）；`declared` 时额外要求 `sources[]` 非空。`explicit-unknown` 的 `basis` 只许缺席或 `declared` | `source: "http-body"` / `basis: "guessed"`，**即使 `status: "unstated"` 也拒** |
-| **V13** | `provenance.sources[].anchor` 必须解析到**同 release 内**的 entry，且 `anchor_sha256` 逐字等于该 entry 的 `sha256`；无 `anchor` 的 source 必须是 `manifest-embedded` | anchor 指向不存在的 entry / sha 不符 / 无锚却声称 `explicit-unknown` 之外的来源 |
-| **V14** | `entries[].license` 若存在必须是非空字符串且文法合法；`role ∈ {payload, license, notice}`；`excluded[].why` 非空 | `license: ""` / `role: "docs"` / `excluded: [{path:"x"}]` 缺 `why` |
+| **V11** | `license` 是非空字符串，且是合法 SPDX 表达式（文法见 §4.1）。`entries[].license` 若存在同理。`role ∈ {payload,license,notice}`；`excluded[].why` 非空 | 缺 `license` / 空串 / `license` 是对象 / 小写算符 / 括号不配对 / `LicenseRef-` 空后缀 |
 
-### 4.1 SPDX 表达式文法（客户端**不需要**实现）
+**零下载、零联网。** V11 只读 manifest 结构。
+
+### 4.1 SPDX 表达式文法
 
 ```
 expr := term (("AND" | "OR") term)*
 term := id ["WITH" exception] | "(" expr ")" | license-ref
-id   := SPDX 标识符形状  ^[A-Za-z0-9][A-Za-z0-9.+-]*$
-exception := SPDX 标识符形状
+id   := ^[A-Za-z0-9][A-Za-z0-9.+-]*$
 license-ref := ^LicenseRef-[A-Za-z0-9._-]+$
 ```
 
-**算符必须大写**（`AND` / `OR` / `WITH`）—— 小写是写法错误的常见形态，直接拒。
-`WITH` 只能作用在**单个标识符**上（`(A OR B) WITH X` 非法），且**不许链式**（`A WITH B WITH C` 非法）。
-优先级：`WITH` > `AND` > `OR`（与 SPDX 一致）。**括号只用于显式分组，不改变优先级。**
+- 算符必须**大写**（`AND` / `OR` / `WITH`）——小写是常见写法错误，直接拒
+- `WITH` 只作用于**单个标识符**（`(A OR B) WITH X` 非法），且**不许链式**（`A WITH B WITH C` 非法）
+- 优先级 `WITH` > `AND` > `OR`（与 SPDX 一致）；括号只用于显式分组
+- **客户端不需要实现这个文法** —— 它把 `license` 当字符串展示
 
-**客户端不需要解析**：它只展示 `expr` 字符串。需要判断"能不能用"的客户端才需要 tokenizer
-（约 35 行），而那是消费端可选能力。
+### 4.2 为什么只有一条不变量
 
-### 4.2 `source` 白名单（谁有资格当证据）
+因为**协议不负责验证声明是否真实**。它能做的是：
+- 要求声明存在且形状合法（V11）
+- 要求**没有声明的 release 不上架**（G7）
 
-| source | 含义 | 需要 anchor |
-|---|---|---|
-| `manifest-embedded` | 生产者直接写在 manifest 里（无外部依据） | ❌ 不需要 |
-| `archive-license-files` | 从 release 内的许可正文 entry 读到 | ✅ |
-| `producer-registry` | 生产者注册表（如 `packages/*.json` 的 `fa-copyright` 链接） | ✅ |
-| `upstream-api` | 上游 API（GitHub `/license`、SPDX 列表） | ✅ **需要**（无锚不可复核） |
-| `explicit-unknown` | 生产者明确声明「查不到」 | ❌ 不需要 |
-
-**为什么只这五种**：每一种都能说清"证据长在哪"。`http-body` 之类不可复核的来源直接排除 ——
-它是"我说我看到了"，不是证据。
-
-### 4.3 `basis`（声明的性质，给人看也给审计用）
-
-| basis | 含义 |
-|---|---|
-| `extracted` | 从 release 内的字节直接读到（最强） |
-| `inherited` | 从 `src` product 继承（产物与源码同许可） |
-| `declared` | 生产者人工声明 |
-| `upstream` | 从上游元数据转录（未经字节核对） |
-
-**协议不强制 `extracted`**，但 catalogue 可以按 basis 排序/过滤 —— 这是**给人判断的**，
-不是协议判据（避免"逼人造假"）。
-
-### 4.4 `excluded[]`（包内不分发的东西）
-
-```jsonc
-"excluded": [
-  {"path": "subprojects/*", "why": "git submodule 未 vendored，不在本 release"},
-  {"path": "tests/runtests", "why": "上游以未知许可分发，已从 tarball 删除"}
-]
-```
-
-至少有一条时，`why` 必须非空。**这不是判据面**（协议不能验证"你真的删了"），
-它是**留痕**：`Files-Excluded` 的对手，让"我们知道包里有东西不能分发"这件事可查。
+「这个声明是不是真的」是发布方的责任，靠 `provenance` 之类的东西无法证明 ——
+那只会让 manifest 变复杂，同时给客户端增加"必须检查"的假义务。
 
 ---
 
-## 5. 客户端义务（`schema: 3`）
+## 5. catalogue（唯一的闸门）
 
-```
-1. GET manifest.json
-2. schema != 3 ⇒ 拒收（V10 整体拒收，不做向后兼容）
-3. 校验 V1–V15（本地，0 请求）
-4. 对每条要消费的 entry：
-     expr = entry.license ?? manifest.license.expr
-     manifest.license.status == "declared" ⇒ 展示 expr，交付字节
-     status == "unstated" / "refused"      ⇒ 默认拒绝解包；
-        错误文案必须带 manifest.license.reason（客户端知道为什么，不是 404）
-```
-
-**客户端不联网核实、不解析正文、不合并来源。** 它消费一个**已经裁决好**的表达式。
-
-若生产者给了 `LicenseRef-<x>`，客户端**照原样展示**，不去追定义 ——
-需要理解自定义许可的客户端才去读 `provenance` 指的那条 entry。
-
----
-
-## 6. 与 catalogue / 站点的关系
-
-| 层 | 承载什么 |
-|---|---|
-| **manifest（v1.1）** | 逐 release 的许可真相（**唯一产地**） |
-| **catalogue** | 只加派生摘录（见下），**不放正文、不放 `provenance` 全量** |
-| **站点页** | 每条 release 显示 `status` + `expr`；本站自身 AGPL-3.0 单独声明 |
-
-catalogue 条目的增量（**派生，不手写**）：
-
-```jsonc
-"license": {
-  "status": "declared",
-  "expr": "GPL-3.0-or-later AND BSD-3-Clause AND LicenseRef-public-domain",
-  "basis": "extracted",              // provenance.sources[0].basis
-  "resolver": "spdx-norm@1",
-  "manifest_sha256": "..."           // 与顶层同名——可复核"这份摘录来自哪份 manifest"
-}
-```
-
-**为什么不复制完整 `provenance`**：那是第二个产地，必然漂移。
-摘录只保留**能复核来源**的最小集。
-
-### 6.1 catalogue 闸门 G7（新增）
+### 5.1 G7
 
 | 闸 | 判据 | 反向用例 |
 |---|---|---|
-| **G7** | `license.status == "declared"` 且 `expr` 非空 | `unstated` / `refused` / 缺 `license` ⇒ **不进 catalogue**（记入 `excluded` 并写原因） |
+| **G7** | schema 3 且 `license` 是非空字符串 | 缺 `license` / 空串 / 是对象 ⇒ **不进 catalogue**（记入 `excluded` 并写原因） |
 
-**「合法」与「可上架」是两件事**：`unstated` 的 manifest 是合法 schema 3
-（校验器全绿），但它进不了 catalogue。这条分界正是「坏的从未上架」。
+**「合法」与「可上架」是两件事**：schema 3 缺 `license` 的 manifest
+是**非法**（V11 红），所以 G7 这里其实是双保险；真正的分界在
+**schema 2 的迁移期放行**（见 §6）。
 
----
-
-## 7. 迁移（16 条现有 release）
-
-| 阶段 | 动作 | 谁 |
-|---|---|---|
-| **M0（现在）** | 校验器仍只认 `schema: 2`；v1.1 实现完成后同时认 3 | 本仓 |
-| **M1** | 生产者重发 manifest（**asset 一个不动**，只换 `manifest.json`），加 `license` 与 `amends` | extra-content / LLVM |
-| **M2** | 派生器开 G7；schema 2 的旧 release 仍进 catalogue 但标 `license.status: "absent"` | 本仓 |
-| **M3** | 全部有 schema 3 ⇒ 关 schema 2 通道；`ACCEPT_SCHEMA` 改 3 | 本仓，由用户裁定时机 |
-
-**`amends`（许可修订锚）**—— 让"只改许可、不动字节"可证伪：
+### 5.2 catalogue 摘录
 
 ```jsonc
-"license": {
-  "amends": {
-    "prior": {"bytes_digest": "<旧 manifest 算出的字节投影>", "manifest_sha256": "<旧 manifest>"},
-    "at": "2026-11-02T10:00:00Z",
-    "why": "补标许可；字节未动"
-  },
-  ...
-}
+"license": "GPL-3.0-or-later AND BSD-3-Clause AND LicenseRef-public-domain"
 ```
 
-**V15**：`amends.prior.bytes_digest` 必须等于**本** manifest 算出的 `bytes_digest`
-（`bytes_digest` = 对所有 entry 的 `(product,name,bytes,sha256)` 排序后取 sha256）。
-
-理由：现有 16 条 release 字节一个都不会变，但 manifest 从 schema 2 变 3。
-没有 `amends`，这次补发在协议看来与"重新发布"不可区分。
-
-### 7.1 迁移真值（实测，来自 `packages/*.json` 的 `fa-copyright` 链接）
-
-| release | 表达式 | 档位 |
-|---|---|---|
-| 10 × forge（cgi 除外） | `GPL-3.0-or-later` | 短档 |
-| `forge-cgi` | `GPL-2.0-or-later` | 短档 |
-| `forge-geometry` | `GPL-3.0-or-later AND BSL-1.0` | 短档 |
-| `forge-matgeom` | `BSD-2-Clause-FreeBSD` | 短档 |
-| `forge-optim` | `GPL-3.0-or-later AND BSD-3-Clause AND LicenseRef-public-domain` | 短档 |
-| `forge-splines` | `GPL-3.0-or-later AND LicenseRef-public-domain` | 短档 |
-| `supply-msl` | `BSD-3-Clause` | 短档 |
-| `supply-pyodide` | `BSD-3-Clause`（+ `MPL-2.0` 的 core 走 entry 覆盖） | 长档 |
-| `LLVM-wasm v0.1.5` | `Apache-2.0 WITH LLVM-exception`（部分 entry 不同） | 长档 |
-
-**14/16 条只需要一个字段。** 迁移不是重做调研，是转录
-（`upstream.links[icon="far fa-copyright"].label`）。
+**就是一个字符串。** 不是对象、没有派生字段、没有 `manifest_sha256` 嵌套。
 
 ---
 
-## 8. 复跑方式（本文所有事实的出处）
+## 6. 迁移
+
+| 阶段 | 动作 |
+|---|---|
+| **M0（现在）** | 校验器接受 schema 2 与 3；schema 3 必须有 `license` |
+| **M1** | 生产者重发 manifest（**asset 一个不动**），加一行 `license` |
+| **M2** | schema 2 的旧 release 仍进 catalogue，`license` 摘录为 `null` |
+| **M3** | 通过 `ACCEPT_SCHEMA = (3,)` 关掉 schema 2 通道（时机由用户裁定） |
+
+**重发 manifest 不需要重传 asset**：v4 的 asset 集合由 manifest 的 `file` 字段定义，
+只要 `bytes`/`sha256`/`file` 逐字不变，asset 一个都不用动。
+
+### 6.1 迁移真值（实测，来自 `packages/*.json` 的 `fa-copyright` 链接）
+
+| release | `license` 一行 |
+|---|---|
+| 10 × forge（cgi 除外） | `GPL-3.0-or-later` |
+| `forge-cgi` | `GPL-2.0-or-later` |
+| `forge-geometry` | `GPL-3.0-or-later AND BSL-1.0` |
+| `forge-matgeom` | `BSD-2-Clause-FreeBSD` |
+| `forge-optim` | `GPL-3.0-or-later AND BSD-3-Clause AND LicenseRef-public-domain` |
+| `forge-splines` | `GPL-3.0-or-later AND LicenseRef-public-domain` |
+| `supply-msl` | `BSD-3-Clause` |
+| `supply-pyodide` | `BSD-3-Clause` |
+| `LLVM-wasm v0.1.5` | `Apache-2.0 WITH LLVM-exception` |
+
+**13/13 条真实许可全部一行搞定，且全部通过 SPDX 文法**（2026-11-01 实测）。
+迁移不是重做调研，是转录。
+
+---
+
+## 7. 复跑方式
 
 ```bash
-# ① apt copyright 覆盖率（§2.1 的 3265 / 3237）
-ls -d /usr/share/doc/*/ | wc -l
-ls /usr/share/doc/*/copyright | wc -l
+# ① apt copyright 覆盖率（§2.1）
+ls -d /usr/share/doc/*/ | wc -l        # ⇒ 3265
+ls /usr/share/doc/*/copyright | wc -l  # ⇒ 3237
 
-# ② 四条规则（§2.2）
-head -40 /usr/share/doc/accountsservice/copyright          # Files: * + 特例
-grep -hE '^License: .* (or|and) ' /usr/share/doc/*/copyright | head -5
-grep -hE '^Files-Excluded' /usr/share/doc/*/copyright | head -3
-grep -A4 '^Comment:' /usr/share/doc/apt/copyright | head -8  # best-effort 态度
-
-# ③ 现状：manifest 无许可字段（§1）
-gh release download forge-optim-1.6.3 -R ArchivalEra/Octave-Extra-Content \
-  -p manifest.json -D /tmp/lic && python3 -c \
-  "import json;print(sorted(json.load(open('/tmp/lic/manifest.json'))))"
-#   ⇒ ['chunkSize','codecs','entries','id','products','schema']
-
-# ④ 迁移真值（§7.1）—— 许可在 upstream.links 的 fa-copyright 里
+# ② 迁移真值（§6.1）
 cd /mnt/hdd/zcode-projects/Octave-Extra-Content && python3 -c "
 import json,glob
 for f in sorted(glob.glob('packages/*.json')):
     d=json.load(open(f))
     print(d['name'], [l['label'] for l in d['upstream']['links'] if 'copyright' in l.get('icon','')])"
 
-# ⑤ 仓级 license 不可信（§1）
-gh api repos/ArchivalEra/LLVM-wasm --jq .license.spdx_id          # ⇒ AGPL-3.0
-gh api repos/ArchivalEra/Octave-Extra-Content --jq .license.spdx_id  # ⇒ NOASSERTION
+# ③ 现状：manifest 无许可字段
+gh release download forge-optim-1.6.3 -R ArchivalEra/Octave-Extra-Content \
+  -p manifest.json -D /tmp/lic && python3 -c \
+  "import json;print(sorted(json.load(open('/tmp/lic/manifest.json'))))"
+
+# ④ 校验器（V11 双向用例）
+python3 tools/check-release-v4.py --selftest   # ⇒ 42 PASS / 0 fail
 ```
 
 ---
 
-## 9. 实现与自证（落地判据）
+## 8. 实现与自证
 
 | 件 | 增量 | 自证 |
 |---|---|---|
-| `tools/check-release-v4.py` | V11–V15 | 每条不变量 **≥2 条反向用例**；正向用例必须真绿 |
-| `scripts/sync-catalogue.py` | G7 + catalogue 摘录 | `unstated` 必须被排除；`declared` 必须进 |
-| `scripts/build-site.py` | 许可列 + AGPL 页脚 | 已有（13 PASS） |
-| **零下载** | V11–V15 全部不碰盘/网 | 自证里不得出现网络调用 |
+| `tools/check-release-v4.py` | V10 接受 2\|3；V11 + `parse_spdx` | 42 PASS / 0 FAIL |
+| `scripts/sync-catalogue.py` | G5 收双 schema；G7 | 18 PASS / 0 FAIL |
+| `scripts/build-site.py` | 页面已标 AGPL；可加许可列 | 13 PASS / 0 FAIL |
 
-**三档自证**（本仓纪律）：正常不报 / 该报必报 / 空输入必报。
-**每条失败信息必须点名 entry**（`[wasm32/numgradient.oct] V14 …`），否则多条报红时无从定位。
+三档自证齐备（正常不报 / 该报必报 / 空输入必报）；失败信息点名 entry。
 
 ---
 
-## 10. 被否的方案（防将来重开）
+## 9. 被否的方案（防将来重开）
 
-| 方案 | 判据 |
+| 方案 | 否决判据 |
 |---|---|
 | **DEP-5 式 `Files:` glob + first-match-wins** | 客户端要重实现匹配器 + 优先级 + 命名空间；三个独立实现必然分歧。真实数据不支持（8/13 单一许可） |
-| **每 entry 一个 license（无默认值）** | 45 个分片写 45 次同一事实；v4 §2.2 已批判同类错误 |
-| **三跳继承（entry → product → src product）** | 对真实数据过度优化；两级（entry → manifest）已够，且少一跳就少一处歧义 |
-| **完整 `TermNode` 结构树（8 种 op）** | 对 16 条真实数据是过度设计；`render` 文法要写死维护，成为新的漂移面 |
-| **catalogue 存完整许可正文** | 第二个产地，必然与 manifest 漂移 |
-| **强制 `basis: "extracted"`** | 逼生产者造假（很多包没有可读的 COPYING）；apt 自己写 "best effort" |
-| **只在站点页脚标总许可** | 正是当前的问题：读者无法区分 `forge-optim` 与 `LLVM-wasm` |
-| **允许 `unstated` 进 catalogue** | 违反「坏的从未上架」——不知道就是不知道，不能上架 |
-| **`Files-Excluded` 做成硬判据** | 协议无法验证"你真的删了"；只能留痕（`excluded[]` + `why`） |
+| **三态 `status: declared/unstated/refused` + `reason`** | **把「不知道」变成下载路径上的闸门**：`unstated` 时客户端要拒绝解包。违反「人家只想下个包一条链接」。而且「不知道」的正确处置是**不上架**，不是让客户端处理 |
+| **`provenance` 见证链（anchor + sha256 + source 白名单 + basis）** | 意图是「证明声明真实」，实际只证明了「有份文件在这儿」。manifest 复杂了一个数量级，客户端多了"必须检查"的假义务。**协议证明不了真实性，别假装能。** |
+| **`amends` 许可修订锚** | 为「补标许可不动字节」设计的可证伪断言。但重发 manifest 本来就只换 manifest.json、asset 不动 —— `amends` 是给一件**已经成立**的事加证明 |
+| **完整 `TermNode` 结构树（8 种 op）** | 对真实数据是过度设计；`render` 文法要写死维护，成为新的漂移面。**结果所有实现都得解析它才能读懂** |
+| **每 entry 一个 license（无默认）** | 45 个分片写 45 次同一事实；v4 §2.2 已批判同类错误 |
+| **catalogue 存完整许可正文** | 第二个产地，必然漂移 |
+| **允许无许可的 release 上架** | 违反「坏的从未上架」 |
 
 ---
 
-## 11. 未决项（不阻塞定稿）
+## 10. 一句话收口
 
-| # | 问题 | 当前处置 |
-|---|---|---|
-| **L1** | `public domain` 该用 `LicenseRef-public-domain` 还是单列布尔 | 用 `LicenseRef-` + `provenance` 指路（SPDX 自带逃逸舱） |
-| **L2** | `amends` 是否要求保留上一份 manifest 的 sha | 可选。给了就核，没给不拒 |
-| **L3** | 阶段 M3 的切换日期（会下架旧 schema） | 等生产者补齐后由用户裁定 |
-| **L4** | 是否需要 DEP-5 全文文件作为 release asset | 可选。作为 `role:"license"` 的普通 entry 即可，不新增 asset 种类 |
+> **许可是一行元数据，不是一个协议层。**
+> 字节下载路径不认识它；manifest 展示它；catalogue 用它决定收不收。
+> 任何让「下载一个包」多一步的设计，都是偏离。

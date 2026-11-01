@@ -143,33 +143,20 @@ def verify_entry(repo, rel, manifest_bytes, assets_by_name, check_runner):
         return None, reasons + ["G5 schema=%r（本客户端只认 %s）"
                                 % (sch, "/".join(str(x) for x in ACCEPT_SCHEMA))]
 
-    # G7 许可闸（v1.1，「坏的从未上架」的执行点）
-    #   「合法」与「可上架」是两件事：unstated 是合法 schema 3，但进不了 catalogue。
-    lic = man.get("license")
+    # G7 许可闸（v1.1，「坏的从未上架」的执行点 —— **闸在这里，不在客户端**）
+    #   判据只有一条：manifest 里有非空 `license` 字符串。
+    #   没有 ⇒ 不上架（合法的 schema 3 也照样不上架）。
+    #   ⚠️ 这里**不解析**表达式：解析是校验器 V11 的事，不是上架判据。
     lic_out = None
     if sch == 3:
-        if not isinstance(lic, dict):
-            return None, reasons + ["G7 schema 3 缺 license"]
-        st = lic.get("status")
-        if st != "declared":
-            return None, reasons + [
-                "G7 许可未声明（status=%r）：%s" % (st, lic.get("reason") or "无 reason")]
-        expr = lic.get("expr")
-        if not isinstance(expr, str) or not expr.strip():
-            return None, reasons + ["G7 declared 但 expr 为空"]
-        prov = lic.get("provenance") or {}
-        srcs = prov.get("sources") or []
-        lic_out = {"status": st, "expr": expr,
-                   "basis": (srcs[0].get("basis") if srcs and isinstance(srcs[0], dict)
-                             else None),
-                   "resolver": prov.get("resolver"),
-                   "manifest_sha256": None}      # 由调用方填（保持纯函数）
+        lic = man.get("license")
+        if not isinstance(lic, str) or not lic.strip():
+            return None, reasons + ["G7 缺许可声明（schema 3 必填一行 SPDX 表达式）"]
+        lic_out = lic.strip()
     else:
-        # schema 2：迁移期（M2）仍收，但显式标「许可未声明」
-        lic_out = {"status": "absent", "expr": None, "basis": None,
-                   "resolver": None, "manifest_sha256": None}
+        lic_out = None                    # schema 2 迁移期：许可未声明
 
-    # G3 V1–V10
+    # G3 V1–V10 全套（纯 manifest 判据，零下载）
     problems = check_runner(man)
     if problems:
         return None, reasons + ["G3 " + p for p in problems]
@@ -199,8 +186,6 @@ def verify_entry(repo, rel, manifest_bytes, assets_by_name, check_runner):
         return None, reasons
 
     # 通过：条目**不含任何可变内容**（tag 固定的 base + 派生时刻 + manifest 身份）
-    if lic_out is not None:
-        lic_out["manifest_sha256"] = got
     return {
         "id": "%s/%s" % (man.get("id") or "%s/%s" % (repo, tag), ""),
         "base": base,
@@ -348,8 +333,8 @@ def _selftest():
     case("★ 重复 id ⇒ SystemExit（两个 release 自称同一 id）",
          lambda: _dup_probe())
 
-    # ── G7 许可闸（v1.1）─────────────────────────────────────────────────
-    def lic_man(schema=3, status="declared", expr="GPL-3.0-or-later", reason=None):
+    # ── G7 许可闸（v1.1：一行字符串）──────────────────────────────────────
+    def lic_man(schema=3, lic="GPL-3.0-or-later", drop=False):
         body = {"schema": schema, "id": "R/p@1", "chunkSize": 5242880,
                 "codecs": ["identity"], "products": {"p": {"form": "file"}},
                 "entries": [{"product": "p", "name": "a.bin", "bytes": 3,
@@ -357,45 +342,32 @@ def _selftest():
                              "variants": [{"codec": "identity", "chunks": [
                                  {"part": 0, "file": "p__a.bin.identity.000",
                                   "bytes": 3, "sha256": "b" * 64}]}]}]}
-        if schema == 3:
-            li = {"status": status,
-                  "provenance": {"resolver": "spdx-norm@1",
-                                 "sources": [{"source": "manifest-embedded",
-                                              "basis": "declared"}]}}
-            if status == "declared":
-                li["expr"] = expr
-            if reason is not None:
-                li["reason"] = reason
-            body["license"] = li
+        if schema == 3 and not drop:
+            body["license"] = lic
         raw = json.dumps(body).encode()
         assets = {"manifest.json": {"digest": "sha256:" + hashlib.sha256(raw).hexdigest()},
                   "p__a.bin.identity.000": {"digest": "sha256:" + "b" * 64}}
-        return body, raw, assets
+        return raw, assets
 
     def run_lic(**kw):
-        body, raw, assets = lic_man(**kw)
+        raw, assets = lic_man(**kw)
         return verify_entry("R", {"tag_name": "t"}, raw, assets, lambda m: [])
 
-    case("G7 schema 3 + declared ⇒ 上架，且带许可摘录",
-         lambda: (lambda r: r[0] is not None and r[0]["license"]["status"] == "declared"
-                            and r[0]["license"]["expr"] == "GPL-3.0-or-later")(run_lic()))
-    case("★ G7 unstated ⇒ 不上架（合法 manifest 也不能进 catalogue）",
-         lambda: run_lic(status="unstated", reason="上游无 COPYING")[0] is None)
-    case("★ G7 refused ⇒ 不上架",
-         lambda: run_lic(status="refused", reason="上游拒绝声明")[0] is None)
-    case("★ G7 排除原因里必须带 reason（可审计）",
-         lambda: any("上游无 COPYING" in x for x in
-                     run_lic(status="unstated", reason="上游无 COPYING")[1]))
-    case("★ G7 declared 但 expr 空 ⇒ 不上架",
-         lambda: run_lic(expr="")[0] is None)
-    case("G7 schema 2（迁移期）⇒ 仍上架，标 absent",
-         lambda: (lambda r: r[0] is not None and r[0]["license"]["status"] == "absent")(run_lic(schema=2)))
+    case("G7 schema 3 + 一行许可 ⇒ 上架，摘录就是那个字符串",
+         lambda: (lambda r: r[0] is not None and r[0]["license"] == "GPL-3.0-or-later")(run_lic()))
+    case("★ G7 缺 license ⇒ 不上架（合法 schema 3 也不行）",
+         lambda: run_lic(drop=True)[0] is None)
+    case("★ G7 license 空串 ⇒ 不上架", lambda: run_lic(lic="")[0] is None)
+    case("★ G7 license 是对象（旧树形）⇒ 不上架", lambda: run_lic(lic={"expr": "MIT"})[0] is None)
+    case("G7 schema 2（迁移期）⇒ 仍上架，许可为 null",
+         lambda: (lambda r: r[0] is not None and r[0]["license"] is None)(run_lic(schema=2)))
     case("★ G5 schema 4 ⇒ 不上架",
-         lambda: (lambda b: (lambda raw: verify_entry(
+         lambda: (lambda raw: verify_entry(
              "R", {"tag_name": "t"}, raw,
              {"manifest.json": {"digest": "sha256:" + hashlib.sha256(raw).hexdigest()},
               "p__a.bin.identity.000": {"digest": "sha256:" + "b" * 64}},
-             lambda m: [])[0] is None)(json.dumps(b).encode()))(lic_man()[0] | {"schema": 4}))
+             lambda m: [])[0] is None)((lambda b: (b.update(schema=4), json.dumps(b).encode())[1])(
+                 json.loads(lic_man()[0]))))
 
     bad = 0
     for label, ok, err in cases:
