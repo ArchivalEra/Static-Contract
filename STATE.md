@@ -124,8 +124,13 @@
   这正是 v1.1 要求 release 自带许可的理由；`v0.1.0`–`v0.1.4` 是 schema 1 前契约格式，
   给三个选项（弃用 / 重发 / 保持被 G5 挡）并倾向弃用。
 - **v1.1 迁移进展（2026-11-01）**：`extra-content` **15 个 release 全部升 schema 3**
-  （`mail/read/006` = 他们的 `135`）。我抽查 7 个（optim + statistics/struct/symbolic/tsa/
-  msl/pyodide）⇒ **7/7 schema 3 + license 合法**，含复合表达式原样保留。
+  （`mail/read/006` = 他们的 `135`）。**全量复跑 15/15**（`gh release download` 逐个取）：
+  全部 `schema: 3` + `license` 合法 + **V1–V11 全绿**，复合表达式原样保留
+  （pyodide `MPL-2.0 AND BSD-3-Clause`、geometry `GPL-3.0-or-later AND BSL-1.0`、
+  optim 三元 AND、splines 带 `LicenseRef-public-domain`）。
+  **G7 实测 15/15 上架且带许可**；反向（去掉 license）正确拒绝。
+  注：全量派生 `sync-catalogue.py --dry-run` 在本机超时（21 个 release 逐个下载，
+  本网络对 GitHub 不稳）；改用已下载 manifest 直跑 `verify_entry` 得上述结果。
   他们同步了工具，并新写 `upgrade-manifest-license.py`（自证 13/13，含
   「改了字节 ⇒ 必须判身份变了」的反向断言）。
   **已回信裁定四件**（`extra-content/mail/120`）：① 采纳他们的 `-OR-` 词边界坑
