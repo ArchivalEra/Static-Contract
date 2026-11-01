@@ -66,9 +66,12 @@ Octave 集群的**静态分发契约权威仓**：协议正典、工具链、悬
 **未试点**：没走完「生产者发 release → catalogue 收录 → 消费者改链接」全链。
 未决项：U1 codecs 顺序（悬案 05）、U2 chunkSize 按件可配、U3 asset 名 product 前缀、U4 其余仓接入排期。
 
-**部署（三通道并行，一份产物）**：push main → `sync-deploy` workflow → **同一份 `site/dist`**：
+**部署（三通道并行，一份产物，全部已上线）**：push main → `sync-deploy` workflow → **同一份 `site/dist`**：
 ① orphan 强推 `deploy` 分支（CF Pages / EdgeOne Pages 监听）；
-② `actions/deploy-pages` 部署 GitHub Pages（`https://archivalera.github.io/Static-Contract/`）。
+② `actions/deploy-pages` 部署 GitHub Pages。
+通道：`https://archivalera.github.io/Static-Contract/` ·
+`https://static.mango-mesa.ccwu.cc/static/`（Cloudflare）·
+`https://isui.ren/static/`（EdgeOne，国内路径）——内容逐字同源，头语义（ETag/`304`/Content-Type）在站侧。
 CI：`gates` workflow 跑与本地钩子同一判据（事实块对账 + 名录全闸门 + 模块自证），
 环境侧显式装 `zstandard`（生成器自证的仪器）并 source `reflect-hooks/Einfacht.env`（旋钮来源）。
 

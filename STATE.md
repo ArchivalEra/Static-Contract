@@ -43,10 +43,22 @@
   `gh api repos/ArchivalEra/Static-Contract/pages --jq .html_url`）。
   站点全相对链接，子路径托管无害。实测：run `41263566662` success（首跑，2026-11-01），
   复跑 `gh run list --workflow sync-deploy --repo ArchivalEra/Static-Contract`。
-  平台约束（shirone `mail/read/002` 实测，复跑见原信 §5）：EdgeOne 免费版 Pages
-  无自定义响应头、无 purge、单文件 ≤ 25MB —— 本站产物为文档级 KB 件、客户端只依赖
-  普通 GET，字节侧头语义由 GitHub release 直链/反代承担，缺口不触本站；
-  反代 `base_proxy` 字段仍预留未填。
+  **三通道现状（2026-11-01 全部上线，shirone `mail/read/003` 侧建 + 我复跑）**：
+  GitHub Pages `https://archivalera.github.io/Static-Contract/`；
+  Cloudflare `https://static.mango-mesa.ccwu.cc/static/`（Worker `/static/*` 前缀路由）；
+  EdgeOne `https://isui.ren/static/`（heart 中间件反代 CF Worker，国内路径）。
+  我侧复跑（2026-11-01）：EdgeOne 通道 catalogue 哈希 `3fffe32ee34975a441aee0a357f10e9d`
+  与 Pages 一致、ETag 条件请求 `304` ✓；CF 通道**从本机 000**（TLS 在 CF 边缘被重置，
+  本网络出口问题，连既有路由 `/assistant.user.js` 同样 000 —— 非部署缺陷；
+  shirone 侧三通道同哈希实测在原信 §3.1，复跑见原信）。
+  头语义（shirone 侧配置，见原信 §2）：精确 Content-Type / ETag=sha256 前 32 位 /
+  条件请求 `304` / `Cache-Control: max-age=300`（刻意不用 immutable —— 站内文档原地更新）。
+  **`base_proxy` 仍未填**——语义切分：catalogue 的 `base_proxy` 是**字节侧**逐 release
+  反代（代理 release asset），`/static/` 两 URL 是**站点镜像**，两者不是一回事；
+  字节侧候选（`isui.ren/repo/<owner>/<repo>/releases/download/<tag>/`，heart 反代 GitHub）
+  待试点真 release 落地时验链再填（shirone 003 §5.2 同意此序）。
+  卫生：本地 `site/dist` 已重建（它是 gitignore 的构建物；三通道读的 deploy 分支由 CI
+  每推重建，本地落后不影响通道，但按 shirone 003 §4 提醒保持新鲜）。
 - **事实系统**（2026-11-01 接线）：pre-commit 重渲染机器块 + 跑 commit 相位全部闸门
   （实测 ran 8 / off 6 / failed 0；复跑 `sh reflect-hooks/pre-commit`）。off 态明说未启用、
   不算通过（ab / instruments / invariants / locks / pins / world —— 各自的旋钮文件未配，
