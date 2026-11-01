@@ -48,3 +48,7 @@
 !mail/read/*.md
 !scripts/
 !scripts/*.py
+
+# 字节码缓存：白名单下 tools/*.py 的放行模式会被 *.pyc 绕过（实测踩过）
+__pycache__/
+*.pyc
