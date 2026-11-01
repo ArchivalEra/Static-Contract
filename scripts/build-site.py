@@ -145,62 +145,298 @@ def build(out):
 
 
 def render_index(cat, fingerprint=""):
-    releases = cat["releases"]
+    """页面形态照 **he.net**（2026-11-01 用户裁定：「去参考 he.net，纯 html 才对得起
+    我们这么实用的静态站」）。
+
+    抄的是**结构与信息密度**，不是抄它的营销内容：
+      · 深蓝标题条（`#000066` 底 + 白字）分节，块边同色 1px —— he.net 的 block/caption；
+      · 左侧边栏导航（170px）+ 右侧内容区（620px），窄屏堆叠；
+      · Arial 13px、链接深蓝加粗带下划线；表格细黑边、无圆角无阴影；
+      · 零 JS、零外链资源（he.net 有 gtag，我们一个都不要）；
+      · 链接只给相对路径 ⇒ 三通道（Pages / CF / EdgeOne）通用。
+    """
+    releases = cat.get("releases") or []
+    excluded = cat.get("excluded") or []
+    n_rel, n_exc = len(releases), len(excluded)
+    verified = (cat.get("verified_at") or "未派生（源文件兜底）")
+
     rows = "\n".join(
-        '    <tr><td><code>{id}</code></td><td><a href="{base}manifest.json">GitHub 直链</a></td>'
-        "<td>{proxy}</td></tr>".format(
-            id=html.escape(e["id"]),
-            base=html.escape(e["base"]),
-            proxy=('<a href="%smanifest.json">反代</a>' % html.escape(e["base_proxy"])
-                   if e.get("base_proxy") else "—"))
-        for e in releases) or "    <tr><td colspan=3>（暂无收录 —— 试点链第 1 环待跑）</td></tr>"
+        "<tr><td><a href=\"%smanifest.json\"><code>%s</code></a></td>"
+        "<td class=\"mono\">%s</td><td class=\"mono\">%s</td><td>%s</td></tr>"
+        % (html.escape(e["base"]), html.escape(e["id"]),
+           html.escape(str((e.get("manifest_sha256") or "")[:12])),
+           html.escape(((e.get("verified_at") or "").replace("T", " ")[:16])),
+           ('<a href="%smanifest.json">反代</a>' % html.escape(e["base_proxy"])
+            if e.get("base_proxy") else "&mdash;"))
+        for e in releases) or \
+        '<tr><td colspan="4">（暂无收录 &mdash; 试点链第 1 环待跑）</td></tr>'
+
+    ex_rows = "\n".join(
+        '<tr><td><code>%s</code></td><td><code>%s</code></td><td class="mono">%s</td></tr>'
+        % (html.escape(x.get("repo", "?")), html.escape(x.get("tag", "?")),
+           html.escape("; ".join(x.get("reasons") or [])[:150]))
+        for x in excluded) or '<tr><td colspan="3">（无排除项）</td></tr>'
+
     specs = _publishable(SPECS, (".md",))
     tools = _publishable(TOOLS, (".py",))
-    spec_links = "\n".join(
-        "    <li><a href=\"contract/%s\">%s</a></li>" % (n, html.escape(n)) for n in specs)
-    tool_links = "\n".join(
-        "    <li><a href=\"tools/%s\"><code>%s</code></a></li>" % (n, n) for n in tools)
-    return """<!doctype html>
-<html lang="zh">
+
+    def _links(names, prefix):
+        if not names:
+            return "<li>（无）</li>"
+        return "\n".join('<li><a href="%s/%s">%s</a></li>'
+                         % (prefix, html.escape(n), html.escape(n)) for n in names)
+
+    return """<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="zh">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Static-Contract · 静态分发契约</title>
+<meta http-equiv="content-type" content="application/xhtml+xml; charset=utf-8" />
+<meta name="viewport" content="initial-scale=1" />
+<title>Static-Contract &mdash; 静态分发契约</title>
 <style>
-body{font:16px/1.7 system-ui,sans-serif;max-width:52em;margin:2rem auto;padding:0 1rem;color:#1a1a1a}
-h1{font-size:1.5rem} code{background:#f4f4f4;padding:.1em .35em;border-radius:4px;font-size:.9em}
-.rule{border-left:4px solid #b45309;padding:.5rem 1rem;background:#fffbeb;margin:1rem 0}
-table{border-collapse:collapse}td,th{border:1px solid #ddd;padding:.4em .8em;text-align:left}
-a{color:#1d4ed8}
+body { background-color:#fff; color:#000; font-family:arial,sans-serif;
+       font-size:13px; padding:0; margin:0; }
+a { color:#000066; text-decoration:underline; font-weight:bold; }
+code { font-family:monospace; font-size:100%; }
+td code { font-size:92%; word-break:break-all; }
+.mono { font-family:monospace; white-space:nowrap; }
+h2 { font-size:100%; margin:0; padding:0; }
+hr { height:1px; margin-bottom:1em; border:0; border-bottom:1px solid #000; }
+
+#page_center { max-width:1240px; margin:0 auto; padding:0 8px; }
+#header { width:100%; text-align:center; margin-bottom:13px; padding-top:8px; }
+#header span { font-size:160%; font-weight:bold; }
+#header h2 { font-weight:normal; font-size:100%; margin-top:.2em; }
+
+.sidebar { display:inline; float:left; width:170px; margin-top:1px; }
+#content { display:inline; float:left; width:1000px; margin:1px 10px 0 10px;
+           padding-bottom:1px; }
+
+.block { width:100%; margin-bottom:9px; padding-bottom:2px; text-align:left;
+         border:1px solid #000066; }
+.block .caption { width:100%; padding:.2em 0; font-size:130%; font-weight:bold;
+                  text-align:center; background-color:#000066; color:#fff; }
+.block .content { font-size:110%; padding:4px 12px 4px 12px; }
+
+.menu { padding:0; margin:0; }
+.menu li { list-style-type:none; margin-left:12px; }
+.submenu { padding:0; margin:0; }
+.submenu li { list-style-type:none; margin-left:8px; font-size:95%; }
+.menu a, .submenu a { text-decoration:none; }
+.menu a:hover, .submenu a:hover { text-decoration:underline; }
+
+table { border-collapse:collapse; width:100%; margin:.3em 0; }
+th, td { border:1px solid #000066; padding:.2em .4em; text-align:left;
+         vertical-align:top; font-size:92%; }
+th { background-color:#e8e8f0; }
+.notice { border:1px solid #000066; background-color:#f4f4f8; padding:.4em .8em;
+          margin:.3em 0; }
+ul.doclist { padding-left:1.4em; margin:.2em 0; }
+ul.doclist li { font-family:monospace; font-size:112%; }
+address { font-style:normal; font-size:95%; color:#333; }
+pre { font-family:monospace; font-size:100%; background-color:#f4f4f8;
+      border:1px solid #999; padding:.5em; overflow-x:auto; margin:.4em 0; }
+
+@media (max-width:1180px) {
+  .sidebar, #content { float:none; width:auto; max-width:100%; }
+  .sidebar { margin:0 10px; }
+  #content { margin:10px; }
+}
 </style>
 </head>
 <body>
-<h1>Static-Contract · 静态分发契约</h1>
-<div class="rule">
-<strong>本站不收录任何 release 件（0 字节托管）。</strong><br>
-所有的包，要么去 GitHub 拿（release 直链），要么走反代。本站只收录元数据与契约文档。<br>
-客户端按契约 §4：从 <code>catalogue.json</code> 拿 <code>base</code>，<code>GET base + manifest.json</code>，
-其余文件名<strong>逐字</strong>取自 manifest，一切字节走普通 GET。
-</div>
-<h2>catalogue（<a href="catalogue.json">catalogue.json</a>）</h2>
-<table>
-  <tr><th>id</th><th>字节来源</th><th>反代</th></tr>
+<div id="page_center">
+  <div id="header">
+    <span>Static-Contract</span><br />
+    <h2>Octave 集群 &middot; 静态分发契约 &middot; 元数据站（0 字节托管）</h2>
+  </div>
+
+  <div class="sidebar" id="navigation">
+    <div class="block">
+      <div class="caption">本站</div>
+      <div class="content">
+        <ul class="menu">
+          <li><a href="#what">这是什么</a></li>
+          <li><a href="#catalogue">收录目录</a>
+            <ul class="submenu">
+              <li><a href="#excluded">排除项</a></li>
+            </ul>
+          </li>
+          <li><a href="#consume">怎么消费</a></li>
+          <li><a href="#channels">三条通道</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="block">
+      <div class="caption">契约文档</div>
+      <div class="content">
+        <ul class="menu">
+          <li><a href="#docs">全部 @@NSPECS@@ 份</a>
+            <ul class="submenu">
+              <li><a href="contract/2026-10-30-release-contract-v4.md">正典 v4</a></li>
+            </ul>
+          </li>
+          <li><a href="#tools">工具链 @@NTOOLS@@ 件</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="block">
+      <div class="caption">仓库</div>
+      <div class="content">
+        <ul class="menu">
+          <li><a href="README.md">README.md</a></li>
+          <li><a href="STATE.md">STATE.md</a></li>
+          <li><a href="maintaince.md">maintaince.md</a></li>
+          <li><a href="sources.json">sources.json</a></li>
+          <li><a href="catalogue.json">catalogue.json</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="block">
+      <div class="caption">源码</div>
+      <div class="content">
+        <ul class="menu">
+          <li><a href="https://github.com/ArchivalEra/Static-Contract">GitHub 仓库</a></li>
+          <li><a href="https://github.com/ArchivalEra/Static-Contract/tree/deploy">deploy 分支</a></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div id="content">
+
+    <div class="block">
+      <div class="caption"><a name="what" style="color:#fff">这是什么</a></div>
+      <div class="content">
+        <p><b>一个 release = 一个不可变 tag = 一份 <code>manifest.json</code> + N 个扁平 asset。</b></p>
+        <ul>
+          <li>名字只允许 GitHub 不会改写的字符（白名单）&rArr;
+              <code>manifest.file</code> 与真实 asset 名<b>恒等</b>。</li>
+          <li>客户端只从 manifest 取名字、<b>绝不拼</b> &rArr; 404 只有一种含义。</li>
+          <li>一切字节走<b>普通 GET</b> &mdash; 无 Range、无条件请求、无自定义头。</li>
+        </ul>
+        <p><b>目标：apt 的稳健 + HTTP 的简洁。</b></p>
+        <div class="notice">
+          <b>本站不收录任何 release 件（0 字节托管）。</b>
+          所有的包要么去 GitHub 拿（release 直链），要么走反代。
+          本站只收录<b>元数据</b>与<b>契约文档</b>。<br />
+          <b>坏的从未上架</b>：每条 release 过 G1&ndash;G6（含平台 digest 零下载验字节），
+          不过的不进目录、原因照列。
+        </div>
+      </div>
+    </div>
+
+    <div class="block">
+      <div class="caption"><a name="catalogue" style="color:#fff">收录目录（@@NREL@@ 条）</a></div>
+      <div class="content">
+        <p>每条的 id 都可点 &mdash; 直接打开该 release 的 <code>manifest.json</code>。
+           验证时刻与 manifest sha 是<b>派生当时</b>的实测值。</p>
+        <table>
+          <tr><th>id</th><th>manifest sha</th><th>验证时刻 (UTC)</th><th>反代</th></tr>
 @@ROWS@@
-</table>
-<h2>契约文档（正典：2026-10-30-release-contract-v4.md）</h2>
-<ul>
+        </table>
+        <p><a href="catalogue.json">catalogue.json</a> &mdash; 机器可读全量（含 <code>excluded</code> 原因）</p>
+      </div>
+    </div>
+
+    <div class="block">
+      <div class="caption"><a name="excluded" style="color:#fff">排除项（@@NEXC@@ 条）</a></div>
+      <div class="content">
+        <p>以下 release <b>未通过严格校验，不在目录里</b>。列出来是为了让发布方知道
+           <b>为什么它没上架</b> &mdash; 静默消失才是最难查的坏法。</p>
+        <table>
+          <tr><th>仓</th><th>tag</th><th>原因</th></tr>
+@@EXROWS@@
+        </table>
+      </div>
+    </div>
+
+    <div class="block">
+      <div class="caption"><a name="docs" style="color:#fff">契约文档</a></div>
+      <div class="content">
+        <p><b>正典：<a href="contract/2026-10-30-release-contract-v4.md">
+           2026-10-30-release-contract-v4.md</a></b> &mdash;
+           契约定名 <b>v1</b>，manifest <code>schema: 2</code>。
+           v0&ndash;v3 与收纳审计是演化史，<b>被否方案的判据留在正典 &sect;8</b>，防将来重开。
+           移交给本仓时正典<b>从未试点，不宣布稳定</b>。</p>
+        <ul class="doclist">
 @@SPECS@@
-</ul>
-<h2>工具链</h2>
-<ul>
+        </ul>
+      </div>
+    </div>
+
+    <div class="block">
+      <div class="caption"><a name="tools" style="color:#fff">工具链</a></div>
+      <div class="content">
+        <p>生成器自证 <code>43 PASS / 0 fail</code>；校验器 <code>26 PASS / 0 fail</code>
+           （V1&ndash;V10 逐条反向）。复跑：<br />
+           <code>python3 tools/make-manifest-v4.py --selftest</code><br />
+           <code>python3 tools/check-release-v4.py --selftest</code></p>
+        <ul class="doclist">
 @@TOOLS@@
-</ul>
-<p>完整地图见 <a href="README.md">README.md</a>。apt 的稳健 + HTTP 的简洁。</p>
-<p style="color:#888;font-size:.8em">@@FP@@</p>
+        </ul>
+      </div>
+    </div>
+
+    <div class="block">
+      <div class="caption"><a name="consume" style="color:#fff">怎么消费</a></div>
+      <div class="content">
+<pre>1. GET &lt;base&gt;/manifest.json         # 全流程唯一需要"知道"的 URL
+2. 校验 schema / 不变量（本地，0 请求）
+3. 选 product（按 form/arch；源码路径只读 src product）
+4. 对每条 entry 按 codecs 顺序选第一个能解的分支：
+     name = variant.chunks[i].file    # 逐字取，绝不拼
+     GET &lt;base&gt;/&lt;name&gt;               # 普通 GET
+     校验 bytes + 逐块 sha256 &rarr; 解码 &rarr; 拼接 &rarr; 校验 entry.sha256</pre>
+        <p>三条铁律：<b>不拼名字</b>、<b>不试错探测</b>、
+           <b>不用 Range / 条件请求 / 自定义头</b>。</p>
+      </div>
+    </div>
+
+    <div class="block">
+      <div class="caption"><a name="channels" style="color:#fff">三条通道（同一份产物）</a></div>
+      <div class="content">
+        <table>
+          <tr><th>通道</th><th>URL</th><th>形态</th></tr>
+          <tr><td>GitHub Pages</td>
+              <td class="mono"><a href="https://archivalera.github.io/Static-Contract/">archivalera.github.io/Static-Contract/</a></td>
+              <td>本仓 workflow 直发</td></tr>
+          <tr><td>Cloudflare</td>
+              <td class="mono"><a href="https://static.mango-mesa.ccwu.cc/static/">static.mango-mesa.ccwu.cc/static/</a></td>
+              <td>运行期回源 deploy 分支</td></tr>
+          <tr><td>EdgeOne</td>
+              <td class="mono"><a href="https://isui.ren/static/">isui.ren/static/</a></td>
+              <td>独立静态树（国内路径）</td></tr>
+        </table>
+        <p>三通道逐字同源，页脚指纹可核对。字节始终在 GitHub release / 反代，
+           不在本站。</p>
+      </div>
+    </div>
+
+    <div class="block">
+      <div class="caption">站点信息</div>
+      <div class="content">
+        <address>
+          catalogue verified_at: <span class="mono">@@VERIFIED@@</span><br />
+          @@FP@@<br />
+          本站零 JS、零外链资源 &mdash; 纯 XHTML 1.1 + CSS，文本浏览器可读。<br />
+          维护方：<a href="https://github.com/ArchivalEra">ArchivalEra</a> &middot;
+          契约正典 <a href="contract/2026-10-30-release-contract-v4.md">contract/</a>
+        </address>
+      </div>
+    </div>
+
+  </div>
+</div>
 </body>
 </html>
-""".replace("@@ROWS@@", rows).replace("@@SPECS@@", spec_links).replace("@@TOOLS@@", tool_links).replace("@@FP@@", html.escape(fingerprint))
-
+""".replace("@@ROWS@@", rows).replace("@@EXROWS@@", ex_rows) \
+   .replace("@@SPECS@@", _links(specs, "contract")) \
+   .replace("@@TOOLS@@", _links(tools, "tools")) \
+   .replace("@@NREL@@", str(n_rel)).replace("@@NEXC@@", str(n_exc)) \
+   .replace("@@NSPECS@@", str(len(specs))).replace("@@NTOOLS@@", str(len(tools))) \
+   .replace("@@VERIFIED@@", html.escape(verified)) \
+   .replace("@@FP@@", html.escape(fingerprint))
 
 # ── 自证 ─────────────────────────────────────────────────────────────────────
 def selftest():
