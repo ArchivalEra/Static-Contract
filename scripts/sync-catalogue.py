@@ -16,7 +16,8 @@
   G3 manifest 过 `check-release-v4.py` 全套 V1–V10（零下载：纯 manifest 判据）
   G4 **V7 的字节身份用平台 digest 对**（零下载）：manifest 里每个 chunk 的
      sha256 == 平台该 asset 的 digest ⇒ 证明「manifest 说的块 == 平台上真有且是这份」
-  G5 schema 必须是 2（V10 已含，这里明写一遍便于审计）
+  G5 schema ∈ {2,3}（v1.1：3 另过 G7）
+  G7 许可必须 declared（unstated/refused 合法但不上架 —— 「坏的从未上架」）
   G6 没有孤儿 asset（asset 不在任何 chunk 里 ⇒ 平台上有 manifest 不认识的文件）
 
 ## 失败即拒绝发布（不是跳过）
@@ -42,7 +43,7 @@ HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SOURCES = os.path.join(HERE, "site", "sources.json")
 CHECKER = os.path.join(HERE, "tools", "check-release-v4.py")
 GITHUB_API = "https://api.github.com"
-ACCEPT_SCHEMA = 2
+ACCEPT_SCHEMA = (2, 3)
 
 
 # ── GitHub 取数（可注入 —— 自证用假 fetcher，绝不联网）────────────────────────
@@ -136,10 +137,37 @@ def verify_entry(repo, rel, manifest_bytes, assets_by_name, check_runner):
     except (ValueError, UnicodeDecodeError) as e:
         return None, reasons + ["G1 manifest 不是合法 JSON: %s" % e]
 
-    # G5 schema
-    if man.get("schema") != ACCEPT_SCHEMA:
-        return None, reasons + ["G5 schema=%r（本客户端只认 %d）"
-                                % (man.get("schema"), ACCEPT_SCHEMA)]
+    # G5 schema（v1.1：2 与 3 都收；3 另过 G7）
+    sch = man.get("schema")
+    if sch not in ACCEPT_SCHEMA:
+        return None, reasons + ["G5 schema=%r（本客户端只认 %s）"
+                                % (sch, "/".join(str(x) for x in ACCEPT_SCHEMA))]
+
+    # G7 许可闸（v1.1，「坏的从未上架」的执行点）
+    #   「合法」与「可上架」是两件事：unstated 是合法 schema 3，但进不了 catalogue。
+    lic = man.get("license")
+    lic_out = None
+    if sch == 3:
+        if not isinstance(lic, dict):
+            return None, reasons + ["G7 schema 3 缺 license"]
+        st = lic.get("status")
+        if st != "declared":
+            return None, reasons + [
+                "G7 许可未声明（status=%r）：%s" % (st, lic.get("reason") or "无 reason")]
+        expr = lic.get("expr")
+        if not isinstance(expr, str) or not expr.strip():
+            return None, reasons + ["G7 declared 但 expr 为空"]
+        prov = lic.get("provenance") or {}
+        srcs = prov.get("sources") or []
+        lic_out = {"status": st, "expr": expr,
+                   "basis": (srcs[0].get("basis") if srcs and isinstance(srcs[0], dict)
+                             else None),
+                   "resolver": prov.get("resolver"),
+                   "manifest_sha256": None}      # 由调用方填（保持纯函数）
+    else:
+        # schema 2：迁移期（M2）仍收，但显式标「许可未声明」
+        lic_out = {"status": "absent", "expr": None, "basis": None,
+                   "resolver": None, "manifest_sha256": None}
 
     # G3 V1–V10
     problems = check_runner(man)
@@ -171,6 +199,8 @@ def verify_entry(repo, rel, manifest_bytes, assets_by_name, check_runner):
         return None, reasons
 
     # 通过：条目**不含任何可变内容**（tag 固定的 base + 派生时刻 + manifest 身份）
+    if lic_out is not None:
+        lic_out["manifest_sha256"] = got
     return {
         "id": "%s/%s" % (man.get("id") or "%s/%s" % (repo, tag), ""),
         "base": base,
@@ -179,6 +209,7 @@ def verify_entry(repo, rel, manifest_bytes, assets_by_name, check_runner):
         "verified_at": None,          # 由调用方填（保持纯函数）
         "source_repo": repo,
         "tag": tag,
+        "license": lic_out,
     }, []
 
 
@@ -316,6 +347,55 @@ def _selftest():
 
     case("★ 重复 id ⇒ SystemExit（两个 release 自称同一 id）",
          lambda: _dup_probe())
+
+    # ── G7 许可闸（v1.1）─────────────────────────────────────────────────
+    def lic_man(schema=3, status="declared", expr="GPL-3.0-or-later", reason=None):
+        body = {"schema": schema, "id": "R/p@1", "chunkSize": 5242880,
+                "codecs": ["identity"], "products": {"p": {"form": "file"}},
+                "entries": [{"product": "p", "name": "a.bin", "bytes": 3,
+                             "sha256": "a" * 64,
+                             "variants": [{"codec": "identity", "chunks": [
+                                 {"part": 0, "file": "p__a.bin.identity.000",
+                                  "bytes": 3, "sha256": "b" * 64}]}]}]}
+        if schema == 3:
+            li = {"status": status,
+                  "provenance": {"resolver": "spdx-norm@1",
+                                 "sources": [{"source": "manifest-embedded",
+                                              "basis": "declared"}]}}
+            if status == "declared":
+                li["expr"] = expr
+            if reason is not None:
+                li["reason"] = reason
+            body["license"] = li
+        raw = json.dumps(body).encode()
+        assets = {"manifest.json": {"digest": "sha256:" + hashlib.sha256(raw).hexdigest()},
+                  "p__a.bin.identity.000": {"digest": "sha256:" + "b" * 64}}
+        return body, raw, assets
+
+    def run_lic(**kw):
+        body, raw, assets = lic_man(**kw)
+        return verify_entry("R", {"tag_name": "t"}, raw, assets, lambda m: [])
+
+    case("G7 schema 3 + declared ⇒ 上架，且带许可摘录",
+         lambda: (lambda r: r[0] is not None and r[0]["license"]["status"] == "declared"
+                            and r[0]["license"]["expr"] == "GPL-3.0-or-later")(run_lic()))
+    case("★ G7 unstated ⇒ 不上架（合法 manifest 也不能进 catalogue）",
+         lambda: run_lic(status="unstated", reason="上游无 COPYING")[0] is None)
+    case("★ G7 refused ⇒ 不上架",
+         lambda: run_lic(status="refused", reason="上游拒绝声明")[0] is None)
+    case("★ G7 排除原因里必须带 reason（可审计）",
+         lambda: any("上游无 COPYING" in x for x in
+                     run_lic(status="unstated", reason="上游无 COPYING")[1]))
+    case("★ G7 declared 但 expr 空 ⇒ 不上架",
+         lambda: run_lic(expr="")[0] is None)
+    case("G7 schema 2（迁移期）⇒ 仍上架，标 absent",
+         lambda: (lambda r: r[0] is not None and r[0]["license"]["status"] == "absent")(run_lic(schema=2)))
+    case("★ G5 schema 4 ⇒ 不上架",
+         lambda: (lambda b: (lambda raw: verify_entry(
+             "R", {"tag_name": "t"}, raw,
+             {"manifest.json": {"digest": "sha256:" + hashlib.sha256(raw).hexdigest()},
+              "p__a.bin.identity.000": {"digest": "sha256:" + "b" * 64}},
+             lambda m: [])[0] is None)(json.dumps(b).encode()))(lic_man()[0] | {"schema": 4}))
 
     bad = 0
     for label, ok, err in cases:

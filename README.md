@@ -34,7 +34,7 @@ Octave 集群的**静态分发契约权威仓**：协议正典、工具链、悬
 | 目录 | 内容 |
 |---|---|
 | `specs/` | 契约正典（v4）+ v0–v3 演化史 + 收纳审计（自 Octave-Extra-Content 移交，原始材料未改）+ **v1.1 许可证协议草案** |
-| `tools/` | v4 生成器与校验器（同上） |
+| `tools/` | v4 生成器与校验器（含 v1.1 许可不变量 V11–V15，自证 78/78） |
 | `questions/` | 悬案台账（`05`：zstd vs gzip 在 EdgeOne 真链路的实测裁决） |
 | `STATE.md` | 活状态（Einfacht 生态格式：只写「现在是什么」，断言旁带复跑方式） |
 | `maintaince.md` | 方向与地图（维护边界 / 例行 / 红线） |
@@ -42,7 +42,7 @@ Octave 集群的**静态分发契约权威仓**：协议正典、工具链、悬
 | `zreflect/` | Einfacht 事实系统平台（自 `vendor/Einfacht` `6e4e6e8`）+ 本仓数据层收集器；台账 `FACTS.json`（**别手改**，跑 `zreflect/facts.py`） |
 | `reflect-hooks/` | git 钩子与旋钮载体（装：`sh reflect-hooks/install.sh`；pre-commit 重渲染机器块 + commit 相位全部闸门） |
 | `mail/` | 跨仓邮件收件箱（规矩见 `mail/README.md`：只追加不删 / 编号递增 / 投递≠提交） |
-| `scripts/` | 零依赖脚本：`mail-read.py`（读信）、`build-site.py`（建站，自证 13/13）、`sync-catalogue.py`（catalogue 严格派生，自证 12/12）、`verify-channels.py`（线上验收，自证 9/9） |
+| `scripts/` | 零依赖脚本：`mail-read.py`（读信）、`build-site.py`（建站，自证 13/13）、`sync-catalogue.py`（catalogue 严格派生 G1–G7，自证 19/19）、`verify-channels.py`（线上验收，自证 9/9） |
 | `vendor/Einfacht` | 反幻觉事实系统套件（上游 `6e4e6e8`，快照 vendor） |
 
 ## 本仓在集群里的位置
