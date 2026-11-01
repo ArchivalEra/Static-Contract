@@ -66,5 +66,7 @@ Octave 集群的**静态分发契约权威仓**：协议正典、工具链、悬
 
 **部署**：deploy 分支 = 纯站点产物，CF Pages / EdgeOne Pages 的部署出口。
 自动更新链：push main → `sync-deploy` workflow（构建器自证 + 构建 + 0 字节闸门）→ orphan 强推 deploy → 托管方自动重建。
+CI：`gates` workflow 跑与本地钩子同一判据（事实块对账 + 名录全闸门 + 模块自证），
+环境侧显式装 `zstandard`（生成器自证的仪器）并加载 `reflect-hooks/einfacht-env.sh`（旋钮来源）。
 
 现状与试点验收判据：`STATE.md`；方向、边界与例行：`maintaince.md`。
