@@ -157,6 +157,16 @@ def selftest():
         return fingerprint_of(d) is None
     case("★ 缺指纹 ⇒ None（构建器缺陷要能看见）", fp_missing)
 
+    # 归属分流：owned=false 的失败不进 blocked（不阻塞）
+    def ownership_routing():
+        chans = [{"name": "mine", "owned": True}, {"name": "theirs", "owned": False}]
+        last, blocked = {}, {}
+        for c in chans:
+            name, owned = c["name"], bool(c.get("owned"))
+            (blocked if owned else last)[name] = ["P1 不可达"]
+        return set(blocked) == {"mine"} and set(last) == {"theirs"}
+    case("★ 归属分流：外部通道失败进 last（不阻塞），我方进 blocked", ownership_routing)
+
     bad = 0
     for label, ok, err in cases:
         print("%s | %s%s" % ("PASS" if ok else "fail", label,
@@ -188,7 +198,11 @@ def main(argv):
         return 2
 
     doc = json.load(open(chan_path, encoding="utf-8"))
-    channels = [(c["name"], c["base"]) for c in doc.get("channels") or []]
+    # 归属：owned=true 的通道失败**阻塞发布**；外部通道失败只报告。
+    # 理由（2026-11-02，CF 全 404 事故）：别人的通道挂了不该拦停我的产物上线，
+    # 那会让问题叠加（我的新产物上不去，他们的通道还没人修）。
+    channels = [(c["name"], c["base"], bool(c.get("owned")))
+                for c in doc.get("channels") or []]
     if not channels:
         print("FATAL: channels.json 里没有通道 —— 零通道不是「全通过」", file=sys.stderr)
         return 2
@@ -197,12 +211,17 @@ def main(argv):
     last = {}
     for attempt in range(1, attempts + 1):
         last = {}
-        for name, base in channels:
+        blocked = {}
+        for name, base, owned in channels:
             probs = check_channel(name, base, cat, verified, n, fp)
             if probs:
-                last[name] = probs
-        if not last:
-            print("全部 %d 个通道都吃到了本次产物" % len(channels))
+                (blocked if owned else last)[name] = probs
+        if not blocked:
+            if last:
+                for name, probs in sorted(last.items()):
+                    print("⚠ 外部通道 %s 未就绪（不阻塞发布）: %s"
+                          % (name, probs[0][:70]))
+            print("全部 %d 个我方/已就绪通道都吃到了本次产物" % len(channels))
             return 0
         if attempt < attempts:
             print("第 %d/%d 轮有通道未就绪，%.0fs 后重试…" % (attempt, attempts, wait))

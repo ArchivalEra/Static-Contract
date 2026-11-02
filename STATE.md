@@ -300,6 +300,9 @@
   现在 `site/channels.json` 加 `owned` 字段：**只有我方管线（github-pages）
   的失败阻塞发布**；外部通道失败打 `⚠` 并明说「不阻塞发布」，但**绝不静默**。
   实测：github-pages dead=0 / edgeone dead=0 / cloudflare dead=16 → 警告，`rc=0`。
+  **同一判据也接进 `verify-channels.py`**（线上验收那步）：原来它等所有通道就绪，
+  CF 一挂整条 workflow 就红。现在 owned=false 的通道未就绪只打 `⚠`，
+  自证加「归属分流」用例（10 PASS / 0 FAIL）。
 - **悬案**：`questions/05`（zstd vs gzip 在 EdgeOne 真链路，各 5 次取中位数）未结。
 - **未决项**：U1 codecs 顺序（= 悬案 05）、U2 chunkSize 按件可配、U3 asset 名 product 前缀、
   U4 接入排期——裁定权在本仓（移交信 §5）。

@@ -38,7 +38,7 @@ Octave 集群的**静态分发契约权威仓**：协议正典、工具链、悬
 | `questions/` | 悬案台账（`05`：zstd vs gzip 在 EdgeOne 真链路的实测裁决） |
 | `STATE.md` | 活状态（Einfacht 生态格式：只写「现在是什么」，断言旁带复跑方式） |
 | `maintaince.md` | 方向与地图（维护边界 / 例行 / 红线） |
-| `site/` | 元数据站数据源：`sources.json`（订阅清单）+ `channels.json`（验收通道，**同时供页面渲染**）+ `catalogue.json`（兜底源，**必须为空**）+ `catalogue.live.json`（CI 写的派生件，gitignore，供闸门读）。页面形态照 he.net：纯 XHTML 1.1 + CSS，零 JS、零外链。**HTML 与 catalogue 公开字段全英文**（契约 .md 正文可中文，那是内容不是门面）+ **废弃契约必标** + **链接完整性**（H5 产物内 + H6 在线指纹判定（遍历各通道 files.json 全量，**按 owned 区分是否阻塞发布**）+ H7 catalogue base 可达性，支持 SC_HTTP_PROXY，防「200 伪装兜底页」）；**页面数据全自动**：自证数来自 `--selftest` 实测、通道表来自 `channels.json`、收录来自派生 catalogue、页脚带 `© 2026 ArchivalEra` |
+| `site/` | 元数据站数据源：`sources.json`（订阅清单）+ `channels.json`（验收通道，**同时供页面渲染**）+ `catalogue.json`（兜底源，**必须为空**）+ `catalogue.live.json`（CI 写的派生件，gitignore，供闸门读）。页面形态照 he.net：纯 XHTML 1.1 + CSS，零 JS、零外链。**HTML 与 catalogue 公开字段全英文**（契约 .md 正文可中文，那是内容不是门面）+ **废弃契约必标** + **链接完整性**（H5 产物内 + H6 在线指纹判定（遍历各通道 files.json 全量，**按 owned 区分是否阻塞发布**）+ H7 catalogue base 可达性；`verify-channels.py` 同判据（外部通道未就绪只告警），支持 SC_HTTP_PROXY，防「200 伪装兜底页」）；**页面数据全自动**：自证数来自 `--selftest` 实测、通道表来自 `channels.json`、收录来自派生 catalogue、页脚带 `© 2026 ArchivalEra` |
 | `zreflect/` | Einfacht 事实系统平台（自 `vendor/Einfacht` `6e4e6e8`）+ 本仓数据层收集器；台账 `FACTS.json`（**别手改**，跑 `zreflect/facts.py`） |
 | `reflect-hooks/` | git 钩子与旋钮载体（装：`sh reflect-hooks/install.sh`；pre-commit 重渲染机器块 + commit 相位全部闸门） |
 | `mail/` | 跨仓邮件收件箱（规矩见 `mail/README.md`：只追加不删 / 编号递增 / 投递≠提交） |
