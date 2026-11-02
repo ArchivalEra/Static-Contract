@@ -1,5 +1,5 @@
 {
-  "schema": 1,
-  "note": "本站不收录任何 release 件（0 字节托管）。包字节一律从条目 base（GitHub release 直链）或 base_proxy（集群反代）获取：GET <base>manifest.json 起，其余文件名逐字取自 manifest。base/base_proxy 必须 https 且以 / 结尾。",
-  "releases": []
+ "schema": 1,
+ "note": "This site hosts zero bytes of any release. This fallback file must contain zero entries -- real entries are DERIVED by scripts/sync-catalogue.py. A release without a license declaration reads \"license\": null -- a legitimate state for static resources such as images.",
+ "releases": []
 }

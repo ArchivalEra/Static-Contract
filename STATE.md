@@ -195,6 +195,22 @@
   `site/catalogue.live.json` 供闸门读（gitignore），并在构建**前**跑闸门。
   **用线上真实 catalogue 验证**：闸门报 6 个问题（H1 40 个 CJK + 5 条缺 reasons_en），
   修复后重跑应全绿。
+- **页面精简与字段清理（2026-11-02，用户三轮纠正）**：用户裁定
+  「整个页面以及用户实际拉下来的 catalogue 里仅英语 / 协议不准动 / 三个站都有些坏链接 /
+  每个 release 都要标许可证且全自动派生 / proxy 那栏去掉 / 保持风格但字数大幅减少」
+  +「不要自己造字段，协议里有的复用到页面上，null 就是 null 不要 not declared」。
+  结果：页面 CJK=0、可见文字 `5458`（原 `7063`，-23%）、proxy 0 次、
+  17 条 release 全部有许可单元格（schema 3 显示 `{id,url}` 可点链接、schema 2 显示 `null`）、
+  许可**全部从 manifest 原样抄**（无手写、无推断）。
+  自造字段清除：`summary_en`、`reasons_en`、`source_repo`、`tag`（条目内）、`not declared` 展示态。
+  excluded 改用协议的词 `reason`（单数英文串）。
+  **code review（两轴）抓到 6 个真 bug 并已修**：① `derive` 排序仍读已删的
+  `source_repo` ⇒ 任一 release 通过即 `KeyError`；② `reason` 被无条件覆盖成
+  `validation failed`（丢了早退路径的原因）；③ H2 调用被误删 ⇒ 闸门假绿；
+  ④ `html.escape("&mdash;")` 二次转义印出字面 `&amp;mdash;`；
+  ⑤ H4 缺 catalogue 时静默跳过（「没跑 ≠ 通过」）；⑥ 兜底源 note 仍中文。
+  闸门 H5 新增：页面 15 条相对链接逐条核对产物内文件（0 死链）；外链不探测
+  （本机网络对 GitHub/Cloudflare 不稳，会误判）。
 - **悬案**：`questions/05`（zstd vs gzip 在 EdgeOne 真链路，各 5 次取中位数）未结。
 - **未决项**：U1 codecs 顺序（= 悬案 05）、U2 chunkSize 按件可配、U3 asset 名 product 前缀、
   U4 接入排期——裁定权在本仓（移交信 §5）。

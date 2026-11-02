@@ -167,9 +167,10 @@ def verify_entry(repo, rel, manifest_bytes, assets_by_name, check_runner):
         return None, reasons + ["G5 schema=%r（本客户端只认 %s）"
                                 % (sch, "/".join(str(x) for x in ACCEPT_SCHEMA))]
 
-    # G7 许可闸（v1.1，「坏的从未上架」的执行点 —— **闸在这里，不在客户端**）
-    #   判据只有一条：manifest 里有非空 `license` 字符串。
-    #   没有 ⇒ 不上架（合法的 schema 3 也照样不上架）。
+    # G7 许可闸。**只在 schema 3 上生效**：
+    #   · schema 3 = 「声明了许可」的发布形态 ⇒ 声明必须完整 {id, url}，否则不上架；
+    #   · schema 2 = **合法的「不声明许可」形态**（给图片等静态资源用，用户裁定 2026-11-02）
+    #     ⇒ 如实记 `license: null`，**不派生、不猜测、不排除**。
     #   ⚠️ 这里**不解析**表达式：解析是校验器 V11 的事，不是上架判据。
     lic_out = None
     if sch == 3:
@@ -184,7 +185,7 @@ def verify_entry(repo, rel, manifest_bytes, assets_by_name, check_runner):
             return None, reasons + ["G7 license.url 必须是非空 https 链接（%r）" % (lurl,)]
         lic_out = {"id": lid.strip(), "url": lurl}
     else:
-        lic_out = None                    # schema 2 迁移期：许可未声明
+        lic_out = None                    # schema 2：合法无许可，如实记 null
 
     # G3 V1–V10 全套（纯 manifest 判据，零下载）
     problems = check_runner(man)
@@ -219,24 +220,20 @@ def verify_entry(repo, rel, manifest_bytes, assets_by_name, check_runner):
     return {
         "id": "%s/%s" % (man.get("id") or "%s/%s" % (repo, tag), ""),
         "base": base,
-        "base_proxy": None,
         "manifest_sha256": got,
-        "verified_at": None,          # 由调用方填（保持纯函数）
-        "source_repo": repo,
-        "tag": tag,
         "license": lic_out,
     }, []
 
 
 def fix_entry(entry, man_id, now):
-    """把 manifest 自称的 id 归一（manifest.id 形如 `<repo>/<pkg>@<ver>`）。"""
+    """归一 id；时间戳只加在**条目级**（不是 license 内 —— 协议 §5.2「不嵌套 sha/时间戳」）。"""
     entry["id"] = man_id
     entry["verified_at"] = now
     return entry
 
 
 # ── 派生主流程 ───────────────────────────────────────────────────────────────
-def derive(sources, fetch_releases, fetch_bytes, check_runner, now):
+def derive(sources, fetch_releases, fetch_bytes, check_runner, now, verbose=False):
     """派生 catalogue。`releases` = 通过列表；`excluded` = 坏的原因为什么没上架。
 
     **任何 source 取数失败 ⇒ 抛异常**（fail-closed：不许静默产出空目录）。
@@ -253,18 +250,15 @@ def derive(sources, fetch_releases, fetch_bytes, check_runner, now):
             try:
                 body = fetch_bytes(assets["manifest.json"]["browser_download_url"])
             except KeyError:
-                excluded.append({"repo": repo, "tag": tag, "reasons": ["G1 缺 manifest.json"],
-                                 "reasons_en": ["missing manifest.json"]})
+                excluded.append({"repo": repo, "tag": tag, "reason": "missing manifest.json"})
                 continue
             except (urllib.error.URLError, OSError, TimeoutError) as e:
                 excluded.append({"repo": repo, "tag": tag,
-                                 "reasons": ["G1 manifest 取不到: %s" % e],
-                                 "reasons_en": ["manifest unreachable: %s" % e]})
+                                 "reason": "manifest unreachable: %s" % e})
                 continue
             entry, reasons = verify_entry(repo, rel, body, assets, check_runner)
             if entry is None:
-                excluded.append({"repo": repo, "tag": tag, "reasons": reasons,
-                             "reasons_en": reasons_en(reasons)})
+                excluded.append({"repo": repo, "tag": tag, "reasons": reasons})
             else:
                 try:
                     man = json.loads(body.decode("utf-8"))
@@ -277,8 +271,26 @@ def derive(sources, fetch_releases, fetch_bytes, check_runner, now):
     if dup:
         raise SystemExit("FATAL: catalogue 里 id 重复（不同 release 自称同一 id）: %s"
                          % ", ".join(dup))
-    releases.sort(key=lambda r: (r["source_repo"], r["tag"]))
-    excluded.sort(key=lambda r: (r["repo"], r["tag"]))
+    # ★ 出厂前：excluded 的**中文 reasons 不上屏**。
+    # 用户裁定（2026-11-02）：用户实际拉下来的 catalogue 里必须仅英语。
+    # 中文 reasons 是维护者诊断，写进内部变量（--verbose 时打印），不写进公开产物。
+    # 于是公开字段只有 reasons_en；中文一律不透出（HTML 闸门 H4 也查这条）。
+    for x in excluded:
+        # 协议 §5.1 G7：不进 catalogue ⇒「记入 excluded 并写原因」。
+        # 键名 `reason`（单数、英文字符串）。中文诊断留给 --verbose。
+        # ⚠️ 不许覆盖已有的 reason —— 早退路径（缺 manifest / 取不到）已写好原因，
+        #    无条件覆盖会把它们全变成 "validation failed"（review 抓到的真 bug）。
+        if not x.get("reason"):
+            en = x.get("reasons_en") or reasons_en(x.get("reasons") or [])
+            x["reason"] = "; ".join(en) if en else "validation failed"
+        if verbose:
+            for zh, e_ in zip(x.get("reasons") or [], reasons_en(x.get("reasons") or [])):
+                print("  [diag] %s/%s: %s => %s" % (x.get("repo"), x.get("tag"), zh, e_))
+        for k in ("reasons", "reasons_en"):
+            x.pop(k, None)
+
+    releases.sort(key=lambda r: r["id"])
+    excluded.sort(key=lambda r: (r.get("repo", ""), r.get("tag", "")))
     return releases, excluded
 
 
@@ -469,20 +481,24 @@ def main(argv):
         sources,
         lambda repo: gh_json("%s/repos/%s/releases?per_page=100" % (GITHUB_API, repo), token),
         lambda url: http_get(url, token),
-        check_runner, now)
+        check_runner, now, verbose="--verbose" in argv)  # --verbose: 打印中文诊断
 
     doc = {"schema": 1,
-           "note": ("本站不收录任何 release 件（0 字节托管）。**本文件由 "
-                    "scripts/sync-catalogue.py 从各仓 release 严格派生，不要手改**。"
-                    "每条都过了 G1–G6（含 V1–V10 全套 + 平台 digest 零下载验字节）；"
-                    "客户端不需要处理坏条目 —— 坏条目从未上架。"),
+           "note": ("This site hosts zero bytes of any release. This file is DERIVED "
+                    "by scripts/sync-catalogue.py from each repo's releases -- do not "
+                    "edit by hand. Every entry passed G1-G7 (the full V1-V11 invariant "
+                    "set plus zero-download verification against platform digests). "
+                    "Clients never have to handle bad entries: bad releases never go "
+                    "live. A release without a license declaration reads "
+                    "\"license\": null -- that is a legitimate state for static "
+                    "resources such as images, not an error."),
            "verified_at": now,
            "releases": releases,
            "excluded": excluded}
     text = json.dumps(doc, ensure_ascii=False, indent=1) + "\n"
     print("派生：%d 条上架 / %d 条排除" % (len(releases), len(excluded)))
     for e in excluded:
-        print("  ✗ %s %s: %s" % (e["repo"], e["tag"], e["reasons"][0]))
+        print("  ✗ %s %s: %s" % (e.get("repo"), e.get("tag"), e.get("reason")))
     if dry:
         print("--dry-run：未写盘")
         return 0

@@ -3,7 +3,7 @@
 #
 # 站点纪律（用户裁定 2026-11-01，最最核心）：**本站不收录任何 release 件（0 字节托管）**。
 # 站点只产出：index.html + catalogue.json + 契约文档（specs/*.md）+ 工具（tools/*.py）+ README。
-# 包字节一律从 catalogue 条目的 base（GitHub release 直链）或 base_proxy（集群反代）获取。
+# 包字节一律从 catalogue 条目的 base（GitHub release 直链）获取。
 #
 # 构建闸门（fail-closed）：产物中出现 release 件形状 ⇒ 构建失败、清场不留半个目录。
 #   · 文件名匹配契约 asset 形状 `<载荷>.<codec>.<NNN>`（codec 取开放词表超集）
@@ -48,8 +48,10 @@ def validate_release(e, seen_ids):
     seen_ids.add(rid)
     for key in ("base", "base_proxy"):
         v = e.get(key)
-        if v is None and key == "base_proxy":
-            continue
+        if v is None:
+            if key == "base_proxy":
+                continue
+            raise ValueError("缺 base（客户端要用它拼 manifest URL）")
         if not isinstance(v, str) or not v.startswith(HTTPS) or not v.endswith("/"):
             raise ValueError("%s 必须 https:// 开头且以 / 结尾（客户端直接拼 file），got %r" % (key, v))
 
@@ -187,7 +189,7 @@ def render_index(cat, fingerprint="", counts=None, channels=None):
     releases = cat.get("releases") or []
     excluded = cat.get("excluded") or []
     n_rel, n_exc = len(releases), len(excluded)
-    verified = (cat.get("verified_at") or "not derived (source fallback)")
+    verified = (cat.get("verified_at") or "")
     counts = counts or {}
     channels = channels or []
 
@@ -197,33 +199,48 @@ def render_index(cat, fingerprint="", counts=None, channels=None):
 
     # 通道表：从 site/channels.json 生成（**不手写**）
     if channels:
-        # note 是实现细节（长），表格只放英文摘要；note 不进 HTML（闸门要求全英文）
+        # 通道表：只显示 channels.json 里的 name + base。不自造摘要字段。
         ch_rows = "\n".join(
-            '<tr><td>%s</td><td class="mono"><a href="%s">%s</a></td>'
-            '<td class="m">%s</td></tr>'
+            '<tr><td>%s</td><td class="mono"><a href="%s">%s</a></td></tr>'
             % (html.escape(c.get("name", "?")), html.escape(c.get("base", "#")),
-               html.escape(c.get("base", "?").rstrip("/").split("//")[-1]),
-               html.escape(c.get("summary_en") or ""))
+               html.escape(c.get("base", "?").rstrip("/").split("//")[-1]))
             for c in channels)
     else:
         ch_rows = '<tr><td colspan="3">(channels.json not configured)</td></tr>'
 
+    def _lic_cell(e):
+        """许可列：**自动取自 catalogue**（派生器从 manifest 抄，页面不手写）。
+
+        schema 2 是合法无许可（给图片等不声明许可的静态资源用）——
+        此时渲染 `null`（协议只定义 `{id,url}` 或 `null`，无第三种状态）。
+        """
+        lic = e.get("license")
+        # 协议只定义 `license: {id,url}` 或 `null`（schema 2 合法无许可）。
+        # **没有第三种状态** —— null 就渲染 null，不自造 "not declared" 之类的展示态。
+        if lic is None:
+            return '<span class="m">null</span>'
+        if not isinstance(lic, dict):
+            return '<span class="m">null</span>'
+        lid = lic.get("id")
+        url = lic.get("url")
+        if not isinstance(lid, str) or not lid:
+            return '<span class="m">null</span>'
+        txt = html.escape(lid)
+        if isinstance(url, str) and url.startswith("https://"):
+            return '<a href="%s" title="%s">%s</a>' % (html.escape(url), txt, txt)
+        return txt
+
     rows = "\n".join(
         "<tr><td><a href=\"%smanifest.json\"><code>%s</code></a></td>"
-        "<td class=\"mono\">%s</td><td class=\"mono\">%s</td><td>%s</td></tr>"
-        % (html.escape(e["base"]), html.escape(e["id"]),
-           html.escape(str((e.get("manifest_sha256") or "")[:12])),
-           html.escape(((e.get("verified_at") or "").replace("T", " ")[:16])),
-           ('<a href="%smanifest.json">反代</a>' % html.escape(e["base_proxy"])
-            if e.get("base_proxy") else "&mdash;"))
+        "<td>%s</td></tr>"
+        % (html.escape(e["base"]), html.escape(e["id"]), _lic_cell(e))
         for e in releases) or \
-        '<tr><td colspan="4">(no entries yet &mdash; pilot chain step 1 not started)</td></tr>'
+        '<tr><td colspan="2">(no releases yet)</td></tr>'
 
     ex_rows = "\n".join(
         '<tr><td><code>%s</code></td><td><code>%s</code></td><td class="mono">%s</td></tr>'
         % (html.escape(x.get("repo", "?")), html.escape(x.get("tag", "?")),
-           # 优先英文摘要（HTML 闸门要求全英文）；中文 reasons 只留在 catalogue 里给维护者
-           html.escape("; ".join(x.get("reasons_en") or x.get("reasons") or [])[:150]))
+           html.escape(str(x.get("reason") or "")[:150]))
         for x in excluded) or '<tr><td colspan="3">(none)</td></tr>'
 
     specs = _publishable(SPECS, (".md",))
@@ -254,185 +271,125 @@ def render_index(cat, fingerprint="", counts=None, channels=None):
 <head>
 <meta http-equiv="content-type" content="application/xhtml+xml; charset=utf-8" />
 <meta name="viewport" content="initial-scale=1" />
-<title>Static-Contract &mdash; Static Distribution Contract</title>
+<title>Static-Contract</title>
 <style>
-body { background-color:#fff; color:#000; font-family:arial,sans-serif;
-       font-size:13px; padding:0; margin:0; }
+body { background:#fff; color:#000; font-family:arial,sans-serif; font-size:13px;
+       padding:0; margin:0; }
 a { color:#000066; text-decoration:underline; font-weight:bold; }
-code { font-family:monospace; font-size:100%; }
+code, .mono { font-family:monospace; }
 td code { font-size:92%; word-break:break-all; }
-.mono { font-family:monospace; white-space:nowrap; }
-h2 { font-size:100%; margin:0; padding:0; }
-hr { height:1px; margin-bottom:1em; border:0; border-bottom:1px solid #000; }
+.m { color:#555; }
 #page_center { max-width:1240px; margin:0 auto; padding:0 8px; }
-#header { width:100%; text-align:center; margin-bottom:13px; padding-top:8px; }
+#header { text-align:center; padding-top:8px; margin-bottom:13px; }
 #header span { font-size:160%; font-weight:bold; }
-#header h2 { font-weight:normal; font-size:100%; margin-top:.2em; }
-.sidebar { display:inline; float:left; width:170px; margin-top:1px; }
-#content { display:inline; float:left; width:1000px; margin:1px 10px 0 10px;
-           padding-bottom:1px; }
-.block { width:100%; margin-bottom:9px; padding-bottom:2px; text-align:left;
-         border:1px solid #000066; }
-.block .caption { width:100%; padding:.2em 0; font-size:130%; font-weight:bold;
-                  text-align:center; background-color:#000066; color:#fff; }
-.block .content { font-size:110%; padding:4px 12px 4px 12px; }
-.menu { padding:0; margin:0; }
-.menu li { list-style-type:none; margin-left:12px; }
-.submenu { padding:0; margin:0; }
-.submenu li { list-style-type:none; margin-left:8px; font-size:95%; }
+#header div { font-weight:normal; font-size:100%; margin-top:.2em; }
+.sidebar { float:left; width:170px; margin-top:1px; }
+#content { float:left; width:1000px; margin:1px 10px 0 10px; padding-bottom:1px; }
+.block { margin-bottom:9px; border:1px solid #000066; }
+.block .caption { padding:.2em 0; font-size:130%; font-weight:bold; text-align:center;
+                  background:#000066; color:#fff; }
+.block .content { font-size:110%; padding:4px 12px; }
+.menu, .submenu { padding:0; margin:0; }
+.menu li, .submenu li { list-style:none; margin-left:12px; }
+.submenu li { margin-left:8px; font-size:95%; }
 .menu a, .submenu a { text-decoration:none; }
 .menu a:hover, .submenu a:hover { text-decoration:underline; }
 table { border-collapse:collapse; width:100%; margin:.3em 0; }
 th, td { border:1px solid #000066; padding:.2em .4em; text-align:left;
          vertical-align:top; font-size:92%; }
-th { background-color:#e8e8f0; }
-.notice { border:1px solid #000066; background-color:#f4f4f8; padding:.4em .8em;
-          margin:.3em 0; }
+th { background:#e8e8f0; }
 .dep { color:#8b0000; font-weight:bold; font-size:90%; margin-left:.4em; }
 ul.doclist { padding-left:1.4em; margin:.2em 0; }
 ul.doclist li { font-family:monospace; font-size:112%; }
 address { font-style:normal; font-size:95%; color:#333; }
-.copy { font-size:110%; }
-pre { font-family:monospace; font-size:100%; background-color:#f4f4f8;
-      border:1px solid #999; padding:.5em; overflow-x:auto; margin:.4em 0; }
+pre { font-family:monospace; background:#f4f4f8; border:1px solid #999;
+      padding:.5em; overflow-x:auto; margin:.4em 0; }
 @media (max-width:1180px) {
-  .sidebar, #content { float:none; width:auto; max-width:100%; }
-  .sidebar { margin:0 10px; }
-  #content { margin:10px; }
+  .sidebar, #content { float:none; width:auto; max-width:100%; margin:0 10px; }
 }
 </style>
 </head>
 <body>
 <div id="page_center">
   <div id="header">
-    <span>Static-Contract</span><br />
-    <h2>Octave cluster &middot; static distribution contract &middot; metadata site (zero-byte hosting)</h2>
-    <div style="font-size:95%;margin-top:.2em">
-      License: <a href="https://www.gnu.org/licenses/agpl-3.0.html">AGPL-3.0</a>
-      &middot; <a href="LICENSE">full text</a>
-    </div>
+    <span>Static-Contract</span>
+    <div>Octave cluster &middot; static distribution contract &middot; metadata site</div>
+    <div>License: <a href="https://www.gnu.org/licenses/agpl-3.0.html">AGPL-3.0</a>
+         &middot; <a href="LICENSE">full text</a></div>
   </div>
 
-  <div class="sidebar" id="navigation">
+  <div class="sidebar">
     <div class="block">
       <div class="caption">Site</div>
-      <div class="content">
-        <ul class="menu">
-          <li><a href="#what">What this is</a></li>
-          <li><a href="#catalogue">Catalogue</a>
-            <ul class="submenu">
-              <li><a href="#excluded">Excluded</a></li>
-            </ul>
-          </li>
-          <li><a href="#consume">How to consume</a></li>
-          <li><a href="#channels">Channels</a></li>
-        </ul>
-      </div>
+      <div class="content"><ul class="menu">
+        <li><a href="#what">What</a></li>
+        <li><a href="#catalogue">Catalogue</a>
+          <ul class="submenu"><li><a href="#excluded">Excluded</a></li></ul></li>
+        <li><a href="#consume">Consume</a></li>
+        <li><a href="#channels">Channels</a></li>
+      </ul></div>
     </div>
     <div class="block">
-      <div class="caption">Contract</div>
-      <div class="content">
-        <ul class="menu">
-          <li><a href="#docs">All @@NSPECS@@ documents</a>
-            <ul class="submenu">
-              <li><a href="contract/2026-10-30-release-contract-v4.md">v4 &mdash; V1&ndash;V10</a></li>
-              <li><a href="contract/2026-11-01-release-contract-v1.1-license.md">v1.1 &mdash; V11</a></li>
-            </ul>
-          </li>
-          <li><a href="#tools">Tools @@NTOOLS@@</a></li>
-        </ul>
-      </div>
+      <div class="caption">Docs</div>
+      <div class="content"><ul class="menu">
+        <li><a href="contract/2026-10-30-release-contract-v4.md">v4 &mdash; V1&ndash;V10</a></li>
+        <li><a href="contract/2026-11-01-release-contract-v1.1-license.md">v1.1 &mdash; V11</a></li>
+        <li><a href="#docs">@@NSPECS@@ documents</a></li>
+        <li><a href="#tools">@@NTOOLS@@ tools</a></li>
+      </ul></div>
     </div>
     <div class="block">
-      <div class="caption">Repository</div>
-      <div class="content">
-        <ul class="menu">
-          <li><a href="README.md">README.md</a></li>
-          <li><a href="STATE.md">STATE.md</a></li>
-          <li><a href="maintaince.md">maintaince.md</a></li>
-          <li><a href="sources.json">sources.json</a></li>
-          <li><a href="catalogue.json">catalogue.json</a></li>
-          <li><a href="LICENSE">LICENSE (AGPL-3.0)</a></li>
-        </ul>
-      </div>
-    </div>
-    <div class="block">
-      <div class="caption">Source</div>
-      <div class="content">
-        <ul class="menu">
-          <li><a href="https://github.com/ArchivalEra/Static-Contract">GitHub repository</a></li>
-          <li><a href="https://github.com/ArchivalEra/Static-Contract/tree/deploy">deploy branch</a></li>
-        </ul>
-      </div>
+      <div class="caption">Repo</div>
+      <div class="content"><ul class="menu">
+        <li><a href="README.md">README</a></li>
+        <li><a href="STATE.md">STATE</a></li>
+        <li><a href="maintaince.md">maintaince</a></li>
+        <li><a href="catalogue.json">catalogue.json</a></li>
+        <li><a href="sources.json">sources.json</a></li>
+        <li><a href="LICENSE">LICENSE</a></li>
+        <li><a href="https://github.com/ArchivalEra/Static-Contract">GitHub</a></li>
+      </ul></div>
     </div>
   </div>
 
   <div id="content">
 
     <div class="block">
-      <div class="caption"><a name="what" style="color:#fff">What this is</a></div>
+      <div class="caption"><a name="what" style="color:#fff">What</a></div>
       <div class="content">
-        <p><b>One release = one immutable tag = one <code>manifest.json</code> + N flat assets.</b></p>
-        <ul>
-          <li>Names use only characters GitHub will not rewrite (whitelist) &rArr;
-              <code>manifest.file</code> is <b>identical</b> to the real asset name.</li>
-          <li>Clients take names <b>only</b> from the manifest, never concatenate &rArr;
-              404 has exactly one meaning.</li>
-          <li>All bytes travel by <b>plain GET</b> &mdash; no Range, no conditional
-              requests, no custom headers.</li>
-        </ul>
-        <p><b>Goal: the robustness of apt + the simplicity of HTTP.</b></p>
-        <div class="notice">
-          <b>This site hosts zero bytes of any release.</b>
-          Every package comes either from GitHub (release direct link) or through a
-          reverse proxy. This site publishes <b>metadata</b> and <b>contract documents</b> only.
-          <br />
-          <b>Bad releases never go live</b>: every release passes G1&ndash;G7 (including
-          platform-digest verification with zero download). Anything that fails stays
-          out of the catalogue, with the reason listed.
-        </div>
+        <p><b>One release = one immutable tag = one <code>manifest.json</code> + N flat assets.</b>
+           Whitelisted names make <code>manifest.file</code> equal the real asset name;
+           clients never build names, so 404 has one meaning. Plain GET only.<br />
+           <b>apt's robustness + HTTP's simplicity.</b> Zero-byte hosting: metadata only,<br />
+           <span class="m">failures stay out of the catalogue with the reason listed.</span></p>
       </div>
     </div>
 
     <div class="block">
-      <div class="caption"><a name="catalogue" style="color:#fff">Catalogue (@@NREL@@ releases)</a></div>
+      <div class="caption"><a name="catalogue" style="color:#fff">Catalogue (@@NREL@@)</a>
+        &middot; <a name="excluded" style="color:#fff">excluded @@NEXC@@</a></div>
       <div class="content">
-        <p>Every id is clickable &mdash; it opens that release's <code>manifest.json</code>
-           directly. The verification time and manifest sha are the values
-           <b>measured at derivation time</b>.</p>
+        <p class="m">Click an id for its <code>manifest.json</code>.
+           <a href="catalogue.json">catalogue.json</a> &mdash; machine-readable.</p>
         <table>
-          <tr><th>id</th><th>manifest sha</th><th>verified (UTC)</th><th>proxy</th></tr>
+          <tr><th>id</th><th>license</th></tr>
 @@ROWS@@
         </table>
-        <p><a href="catalogue.json">catalogue.json</a> &mdash; machine-readable full record
-           (including <code>excluded</code> reasons and per-release <code>license</code>)</p>
-      </div>
-    </div>
-
-    <div class="block">
-      <div class="caption"><a name="excluded" style="color:#fff">Excluded (@@NEXC@@ releases)</a></div>
-      <div class="content">
-        <p>These releases <b>failed strict validation and are not in the catalogue</b>.
-           They are listed so publishers can see <b>why they are not live</b> &mdash;
-           silent disappearance is the hardest failure to debug.</p>
         <table>
-          <tr><th>repo</th><th>tag</th><th>reason</th></tr>
+          <tr><th>excluded: repo</th><th>tag</th><th>reason</th></tr>
 @@EXROWS@@
         </table>
       </div>
     </div>
 
     <div class="block">
-      <div class="caption"><a name="docs" style="color:#fff">Contract documents</a></div>
+      <div class="caption"><a name="docs" style="color:#fff">Contract</a></div>
       <div class="content">
-        <p><b>Current authority:</b>
-           <a href="contract/2026-10-30-release-contract-v4.md">v4 &mdash; V1&ndash;V10</a>
-           (base invariants) plus
-           <a href="contract/2026-11-01-release-contract-v1.1-license.md">v1.1 &mdash; V11</a>
-           (per-release license, manifest <code>schema: 3</code>).</p>
-        <p>Everything else is <b>history</b>. Rejected designs and their criteria are kept
-           in v4 &sect;8 and v1.1 &sect;9 so they are not re-opened by accident.
-           <b>Not yet piloted end-to-end; not declared stable.</b></p>
+        <p><b>Authority:</b>
+           <a href="contract/2026-10-30-release-contract-v4.md">v4 &mdash; V1&ndash;V10</a> +
+           <a href="contract/2026-11-01-release-contract-v1.1-license.md">v1.1 &mdash; V11</a>.
+           The rest is history, kept so rejected designs are not re-opened.
+           <b>Not declared stable.</b></p>
         <ul class="doclist">
 @@SPECS@@
         </ul>
@@ -442,14 +399,9 @@ pre { font-family:monospace; font-size:100%; background-color:#f4f4f8;
     <div class="block">
       <div class="caption"><a name="tools" style="color:#fff">Tools</a></div>
       <div class="content">
-        <p>manifest generator <code>@@CNT_GEN@@</code> &middot;
-           contract checker <code>@@CNT_CHK@@</code> &middot;
-           site builder <code>@@CNT_BUILD@@</code> &middot;
-           catalogue deriver <code>@@CNT_CAT@@</code>.<br />
-           <small>(These counts are <b>measured by the builder itself</b>, never
-           hand-copied &mdash; a copied number starts rotting the moment it is written.)</small><br />
-           Reproduce: <code>python3 tools/make-manifest-v4.py --selftest</code> &middot;
-           <code>python3 tools/check-release-v4.py --selftest</code></p>
+        <p class="m">generator <code>@@CNT_GEN@@</code> &middot; checker
+           <code>@@CNT_CHK@@</code> &middot; builder <code>@@CNT_BUILD@@</code> &middot;
+           deriver <code>@@CNT_CAT@@</code> (measured, not hand-copied)</p>
         <ul class="doclist">
 @@TOOLS@@
         </ul>
@@ -457,17 +409,13 @@ pre { font-family:monospace; font-size:100%; background-color:#f4f4f8;
     </div>
 
     <div class="block">
-      <div class="caption"><a name="consume" style="color:#fff">How to consume</a></div>
+      <div class="caption"><a name="consume" style="color:#fff">Consume</a></div>
       <div class="content">
-<pre>1. GET &lt;base&gt;/manifest.json         # the only URL you need to know
-2. validate schema / invariants (local, 0 requests)
-3. pick a product (by form/arch; source path reads the src product only)
-4. for each entry, take the first decodable variant per codecs order:
-     name = variant.chunks[i].file    # verbatim, never concatenate
-     GET &lt;base&gt;/&lt;name&gt;               # plain GET
-     check bytes + per-chunk sha256 &rarr; decode &rarr; concat &rarr; check entry.sha256</pre>
-        <p>Three rules: <b>never build names</b>, <b>never probe by trial</b>,
-           <b>never use Range / conditional requests / custom headers</b>.</p>
+<pre>GET &lt;base&gt;/manifest.json      # the only URL you need
+name = chunks[i].file         # verbatim, never build it
+GET &lt;base&gt;/&lt;name&gt;             # plain GET
+check bytes + sha256 &rarr; decode &rarr; concat &rarr; check entry.sha256</pre>
+        <p class="m">No Range, no conditional requests, no custom headers.</p>
       </div>
     </div>
 
@@ -475,34 +423,22 @@ pre { font-family:monospace; font-size:100%; background-color:#f4f4f8;
       <div class="caption"><a name="channels" style="color:#fff">Channels (same artifact)</a></div>
       <div class="content">
         <table>
-          <tr><th>channel</th><th>URL</th><th>form</th></tr>
+          <tr><th>channel</th><th>URL</th></tr>
 @@CHANNELS@@
         </table>
-        <p>All channels serve the same bytes, verifiable by the build fingerprint in the
-           footer. Release bytes always live on GitHub releases or a proxy, never here.</p>
+        <p class="m">Same bytes, verifiable by the fingerprint below.</p>
       </div>
     </div>
 
     <div class="block">
-      <div class="caption">Site information</div>
+      <div class="caption">Info</div>
       <div class="content">
         <address>
-          <b class="copy">&copy; 2026 ArchivalEra. All rights reserved.</b><br />
-          This site (pages, contract documents, tools) is licensed under
-          <a href="https://www.gnu.org/licenses/agpl-3.0.html">AGPL-3.0</a> &mdash;
-          full text: <a href="LICENSE">LICENSE</a> &middot;
-          source: <a href="https://github.com/ArchivalEra/Static-Contract">GitHub</a><br />
-          <b>Catalogued releases are NOT covered by this licence</b> &mdash; each release
-          is governed by its publisher's terms, listed per release in
-          <a href="catalogue.json">catalogue.json</a> (<code>license.id</code> +
-          <code>license.url</code>) and in its own <code>manifest.json</code>.
-          This site hosts <b>metadata only</b>, never bytes.<br /><br />
-          catalogue verified_at: <span class="mono">@@VERIFIED@@</span><br />
-          @@FP@@<br />
-          Zero JS, zero external resources &mdash; plain XHTML 1.1 + CSS, readable in
-          a text browser.<br />
-          Maintainer: <a href="https://github.com/ArchivalEra">ArchivalEra</a> &middot;
-          contract: <a href="contract/2026-10-30-release-contract-v4.md">contract/</a>
+          <b>&copy; 2026 ArchivalEra. All rights reserved.</b><br />
+          This site is <a href="https://www.gnu.org/licenses/agpl-3.0.html">AGPL-3.0</a>
+          &mdash; releases are not; each follows its publisher's terms
+          (<a href="catalogue.json">catalogue.json</a>).<br />
+          verified_at: <span class="mono">@@VERIFIED@@</span> &middot; @@FP@@
         </address>
       </div>
     </div>
@@ -511,7 +447,7 @@ pre { font-family:monospace; font-size:100%; background-color:#f4f4f8;
 </div>
 </body>
 </html>
-'''""".replace("@@ROWS@@", rows).replace("@@EXROWS@@", ex_rows) \
+""".replace("@@ROWS@@", rows).replace("@@EXROWS@@", ex_rows) \
    .replace("@@SPECS@@", _links(specs, "contract")) \
    .replace("@@TOOLS@@", _links(tools, "tools")) \
    .replace("@@NREL@@", str(n_rel)).replace("@@NEXC@@", str(n_exc)) \

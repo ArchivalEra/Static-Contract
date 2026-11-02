@@ -18,6 +18,9 @@
   H2 页面里每个 `contract/*.md` 链接，若该文档带 DEPRECATED / SUPERSEDED 横幅，
      则页面上该项**必须**同时出现同样的标记（不能静默列出）
   H3 `specs/` 下除权威文档外，全部必须带废弃横幅（防新加文档时忘标）
+  H4 catalogue 的**公开字段**（note / reason / id / license）不得含 CJK；
+     且缺 catalogue 时**必须红**（「没跑 ≠ 通过」）
+  H5 页面里每个相对链接必须指向产物内真实存在的文件（只查产物内，不探测外链）
 
 权威文档 = `2026-11-01-release-contract-v1.1-license.md`（v1.1）
          + `2026-10-30-release-contract-v4.md`（V1–V10，部分取代）
@@ -85,6 +88,25 @@ def check_html_lang(html):
     return out
 
 
+def check_links(html, dist_dir):
+    """H5：页面里每个相对链接必须指向产物内真实存在的文件。
+
+    为什么必须：三个通道都在服务同一份产物，一处死链就是三处死链。
+    只查**产物内**（确定性、零网络）；外链（GitHub / gnu.org / 各通道 URL）
+    不做在线探测 —— 本机网络对 GitHub 不稳，会把网络问题误判成坏链
+    （实测：Cloudflare 通道与 github.com 全部 URLError/Timeout，而链接本身完好）。
+    """
+    probs = []
+    links = sorted({m for m in re.findall(r'href="([^"#]+)"', html)
+                    if not m.startswith(("http://", "https://", "mailto:", "#"))})
+    for l in links:
+        p = os.path.join(dist_dir, l)
+        if not os.path.exists(p):
+            probs.append("H5 死链: %s（产物里没有这个文件）" % l)
+    # 反向：产物里有文件但页面没链到（提示，不算失败）——只在 verbosely 打印
+    return probs, len(links)
+
+
 def check_specs_marked(specs_dir):
     """H3：非权威文档必须有废弃横幅。"""
     probs = []
@@ -139,17 +161,30 @@ def check_catalogue_en(cat_path):
         d = json.load(open(cat_path, encoding="utf-8"))
     except ValueError as e:
         return ["H4 catalogue 非法 JSON: %s" % e]
+    # ★ 整份 catalogue 的**对外字段**不得含 CJK（note / id / license / excluded）
+    #   中文 reasons 是给维护者的内部诊断，**允许**留在 catalogue 里；
+    #   但对外可见的部分（note / reasons_en / license / id）必须全英文。
+    note = d.get("note")
+    if isinstance(note, str) and CJK.search(note):
+        probs.append("H4 catalogue.note 含中文（这是公开发布字段）")
     for x in d.get("excluded") or []:
         if not isinstance(x, dict):
             continue
-        # reasons_en 是给读者的；reasons 是内部诊断
-        if not x.get("reasons_en"):
-            probs.append("H4 excluded %s/%s 缺 reasons_en（页面会退化成中文原因）"
-                         % (x.get("repo"), x.get("tag")))
-        for r in x.get("reasons_en") or []:
-            if CJK.search(r):
-                probs.append("H4 excluded %s/%s 的 reasons_en 含中文"
-                             % (x.get("repo"), x.get("tag")))
+        # 协议 §5.1 G7：excluded 只为「写原因」。键名 `reason`（单数、英文字符串）。
+        if not isinstance(x.get("reason"), str) or not x["reason"].strip():
+            probs.append("H4 excluded %s/%s 缺 reason" % (x.get("repo"), x.get("tag")))
+        elif CJK.search(x["reason"]):
+            probs.append("H4 excluded %s/%s 的 reason 含中文" % (x.get("repo"), x.get("tag")))
+    for r in d.get("releases") or []:
+        if not isinstance(r, dict):
+            continue
+        if CJK.search(r.get("id") or ""):
+            probs.append("H4 release id 含中文: %r" % r.get("id"))
+        lic = r.get("license")
+        if isinstance(lic, dict):
+            for k in ("id", "url"):
+                if CJK.search(lic.get(k) or ""):
+                    probs.append("H4 %s 的 license.%s 含中文" % (r.get("id"), k))
     return probs
 
 
@@ -160,22 +195,40 @@ def main():
     probs = []
     tmp = tempfile.mkdtemp(prefix="sc-site-")
     try:
-        rc, log = _build_to(os.path.join(tmp, "dist"), cat=CAT_ABS)
+        dist_dir = os.path.join(tmp, "dist")
+        rc, log = _build_to(dist_dir, cat=CAT_ABS)
         if rc != 0:
             probs.append("构建失败（rc=%d）：%s" % (rc, log.strip().splitlines()[-1:]))
             html = ""
         else:
-            html = open(os.path.join(tmp, "dist", "index.html"), encoding="utf-8").read()
+            html = open(os.path.join(dist_dir, "index.html"), encoding="utf-8").read()
             hits = check_html_lang(html)
             if hits:
                 probs.append("H1 index.html 含 %d 个 CJK 字符，例：%r"
                              % (len(CJK.findall(html)), hits[:2]))
+            # ⚠️ H5 必须在 tmp 还在时跑 —— 曾放到 finally 之后，
+            #    产物已删 ⇒ 15 条全部误报"死链"（判据对，时序错）。
+            link_probs, n_links = check_links(html, dist_dir)
+            probs += link_probs
+            print("H5：检查了 %d 个产物内相对链接" % n_links)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
     probs += check_specs_marked(SPECS)
+    # ⚠️ 缺 catalogue 必须红，不许静默跳过。
+    # 「没跑 ≠ 通过」—— 线上事故就是闸门查不到数据而报绿。
     if CAT_ABS:
         probs += check_catalogue_en(CAT_ABS)
+    else:
+        # 本地 pre-commit 没有派生件时：查**兜底源**（它也在产物里，必须英文）。
+        # CI 里两次都能查（先派生再 gate），所以 CI 不会走到这里。
+        # 「没跑 ≠ 通过」：这里查的是兜底源，不是跳过。
+        fallback = os.path.join(REPO, "site", "catalogue.json")
+        if os.path.exists(fallback):
+            probs += check_catalogue_en(fallback)
+            print("H4：用兜底源 site/catalogue.json（CI 会用派生件）")
+        else:
+            probs.append("H4 既无派生件也无兜底源 —— 未查不是通过")
     if html:
         probs += check_page_marks_deprecated(html, SPECS)
 
@@ -184,7 +237,7 @@ def main():
     if probs:
         print("站点语言闸门：%d 个问题" % len(probs), file=sys.stderr)
         return 1
-    print("站点语言闸门：OK（HTML 全英文 / 废弃契约已标 / 页面同步标记）")
+    print("站点语言闸门：OK（HTML 全英文 / 废弃契约已标 / catalogue 英文 / 链接完整）")
     return 0
 
 
