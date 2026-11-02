@@ -1,5 +1,12 @@
 # 发布契约（Release Contract）设计 · v0 草案
 
+> ## ⛔ DEPRECATED — 历史文档，不是权威（2026-11-02 标注）
+>
+> 本文**从未投递、从未进任何 schema、从未推广**，已被后续版本取代。
+> **现行权威 = `specs/2026-10-30-release-contract-v4.md`（V1–V10 基础条款）
+> + `specs/2026-11-01-release-contract-v1.1-license.md`（V11 许可，schema 3）**。
+> 保留本文的唯一理由是**被否方案的判据**（防止将来重开）——不要照它实现。
+
 > **状态**：草案（供用户审）。**未投递、未进任何 schema、未推广**。
 > **设计依据**：本仓、宿主、OM、UI 四个仓的产物实物 + 2026-10-30 线上实测。
 > **术语**：按 `codebase-design` 的 module / interface / seam / adapter / depth / leverage。

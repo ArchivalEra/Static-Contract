@@ -175,6 +175,16 @@
   **采纳他们建议写进正典 §4.5**：`license` 过了 V11 **≠** 许可写得对 ——
   V11 只挡机械错形，语义正确性必须逐条核。附三次同一夜的实例
   （我两次推断 + extra-content 一次推断，**三次都过了 V11，三次内容都错**）。
+- **站点英文闸门 + 废弃契约标注（2026-11-02）**：用户裁定「html 页面不准出现中文」与
+  「之前那些 contract 都标成 deprecated」。
+  ① `index.html` 全英文（CJK 实测 `0`）；契约 `.md` 正文保留中文（那是内容，不是门面）。
+  ② 废弃标注分级：`v0`/`v1`/`v2`/`v3`/`v3-absorption-audit` 标 **DEPRECATED**；
+  **`v4` 标 SUPERSEDED IN PART**（V1–V10 仍有效，只是 `schema: 2` 被 v1.1 的 3 取代）——
+  一刀切把 v4 标成废弃会误导读者。
+  ③ 页面文档列表按横幅自动渲染 `[DEPRECATED]` / `[PARTLY SUPERSEDED]`。
+  新闸门 `zreflect/check_site_lang.py`（commit 相位，实测 **ran 10 / off 6 / failed 0**）：
+  H1 HTML 无 CJK / H2 **完全废弃**的文档页面必须标（部分取代不强制，否则判据本身错）/
+  H3 非权威文档必须有横幅。**两条阴性验证均正确检出**（塞中文、去横幅）。
 - **悬案**：`questions/05`（zstd vs gzip 在 EdgeOne 真链路，各 5 次取中位数）未结。
 - **未决项**：U1 codecs 顺序（= 悬案 05）、U2 chunkSize 按件可配、U3 asset 名 product 前缀、
   U4 接入排期——裁定权在本仓（移交信 §5）。
@@ -222,9 +232,10 @@
 | `check_readme_sync.py`（三语 README 闸门） | commit | 语言版本是同一条断言的三份拷贝：结构互链 + 每次推送同批 | `REFLECT_READMES` |
 | `check_retractions.py`（翻案重现检测） | commit | 被推翻的断言不许悄悄回来当现状 | `REFLECT_RETRACTIONS`, `REFLECT_DOCS`, `REFLECT_HISTORY_SECS` |
 | `check_site_build.py`（站点构建自证） | commit | build-site.py 自证 10 条（catalogue 校验 + 0 字节闸门 + 确定性） | — |
+| `check_site_lang.py`（站点语言闸门） | commit | HTML 产物必须全英文；废弃契约必须在页面与文档里被标出 | — |
 | `check_stale.py`（陈旧断言检测） | commit | sha 出处 / 退役名 / 测龄 | `REFLECT_DOCS`, `REFLECT_FACTS`, `REFLECT_HISTORY_SECS`, `REFLECT_RETIRED`, `REFLECT_STALE_DAYS` |
 | `check_world.py`（world 闸门） | commit | 声明式验证对象：多线仓库共享验证环境的世界对账 | `REFLECT_WORLD`, `REFLECT_WORLD_LINE` |
 | `doctor.py`（开工预检 doctor） | start-of-work | 进程 / 端口活性（查会死的东西 ⇒ runs_at=start-of-work，不进 pre-commit） | `REFLECT_DOCTOR`, `REFLECT_DOCTOR_TIMEOUT` |
 
-16 道闸门（发现式名录派生 —— 手写清单会漂，加闸门 = 落一个声明行，这里自动长出来）。
+17 道闸门（发现式名录派生 —— 手写清单会漂，加闸门 = 落一个声明行，这里自动长出来）。
 <!-- /AUTO:GATES -->
