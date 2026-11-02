@@ -197,6 +197,47 @@ def check_channels_online(channels, links, attempts=2):
     return probs, stats
 
 
+def check_catalogue_bases(cat_path, attempts=2):
+    """H7：catalogue 里每条 `base + manifest.json` 必须真的可达。
+
+    为什么单列（extra-content mail/007 实测事故）：上游「删旧 tag + 发新 tag」后，
+    catalogue 会在一整个派生周期里指向**已删除的 tag** —— 实测两条 base 全 404，
+    而当时我所有的闸门都是绿的（它们只查产物，不查 catalogue 指向的活链）。
+
+    ⚠️ 这条**只对 `releases` 生效**；`excluded` 里的 tag 允许不可达
+    （那正是它被排除的原因）。
+    """
+    import json
+    probs = []
+    if not os.path.exists(cat_path):
+        return ["H7 catalogue 不存在"]
+    try:
+        d = json.load(open(cat_path, encoding="utf-8"))
+    except ValueError as e:
+        return ["H7 catalogue 非法 JSON: %s" % e]
+    rel = d.get("releases") or []
+    if not rel:
+        return ["H7 catalogue 没有 releases —— 未查不是通过"]
+    dead = []
+    for r in rel:
+        u = (r.get("base") or "") + "manifest.json"
+        code = None
+        for _ in range(attempts):
+            code, body = _http(u)
+            if isinstance(code, int) and code == 200 and body:
+                break
+        else:
+            dead.append((r.get("id", "?"), code))
+            continue
+        if not (isinstance(code, int) and code == 200):
+            dead.append((r.get("id", "?"), code))
+    if dead:
+        probs.append("H7 %d/%d 条 base 取不到 manifest（catalogue 指向已删除的 tag？）: %s"
+                     % (len(dead), len(rel),
+                        ", ".join("%s(%s)" % x for x in dead[:5])))
+    return probs
+
+
 def check_specs_marked(specs_dir):
     """H3：非权威文档必须有废弃横幅。"""
     probs = []
@@ -356,6 +397,10 @@ def main():
             print("H6：无 files.json 清单，回落到 HTML 链接（覆盖面变窄，不含未引用产物）")
         for k, v in rel_by_chan.items():
             print("H6 %s: files.json 列出 %d 个文件" % (k, len(v)))
+        if CAT_ABS:
+            h7 = check_catalogue_bases(CAT_ABS)
+            probs += h7
+            print("H7 catalogue base 可达性: %s" % ("全部可达" if not h7 else h7[0][:80]))
         if chans and rel:
             o_probs, stats = check_channels_online(chans, rel)
             probs += o_probs

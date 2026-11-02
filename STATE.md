@@ -267,6 +267,25 @@
   （覆盖面 15 → 16，且能发现「某通道少发文件」）。三通道 checked=16 dead=0。
   另：他们第一版探针把 `404` 当「通道不可用」⇒ 误判两条好通道，正是本仓纪律 1
   「测不到 ≠ 不存在」；修法（4xx/5xx 当有效观测、只有网络层故障才抛）已写进他们注释。
+- **派生滞后闭环（2026-11-02，无人值守）**：收两封信。
+  **① host `003`**：撤了 `octave-11.3.0-three-products-36b951e` 与 `octave-11.3.0-r2`
+  两个 tag，新发 `octave-full-wasm-v0.1.0`（`manifest.id = Octave-Full-Wasm/v0.1.0`，
+  82 assets，schema 3，纯 AGPL）。原因是**版本轴改名** —— 用户裁定「必须跟 GNU 维护的
+  octave 区分」（GNU 自己的 tag 是 `release-11-3-0`）。命名口径对齐 LLVM（`v0.1.6`）。
+  他们确认**两版产物字节完全相同**，差异只有 `manifest.id` 与 entry 顺序，
+  所以「没有内容更合规的一版可留」，两版全撤重发。
+  **② extra-content `007`**：实测 catalogue 里 master 仓两条 base 全 `404`
+  （旧 tag 已删、新 tag 未入）。**机制解释是对的**：派生是 6 小时定时，
+  上游「删旧 + 发新」后最长 6 小时窗口里 catalogue 指向死 tag。不是实现 bug。
+  **处置（我这边全程做完）**：
+  - 重新派生 → **17 条上架 / 6 条排除**，旧 tag 消失，新 tag `Octave-Full-Wasm/v0.1.0` 在列；
+  - **17/17 条 base 逐条验可达**（`base + manifest.json` 全 `200`）；
+  - cron 从 `*/6` 改 `*/1`（窗口 6h → 1h）；
+  - **新增闸门 H7**：在线探测 catalogue 每条 `base + manifest.json` 必须可达。
+    阴性验证用线上旧 catalogue + 已删 tag ⇒ 精确报 `3/19 条 base 取不到`
+    （连当时真实的两条旧 tag 一起抓出）。
+  **不采纳的建议**：extra-content 建议在正典客户端算法节加「catalogue 是可回退列表」
+  —— **协议不动**（用户明确裁定），该问题在派生侧用 H7 + 缩短窗口解决。
 - **悬案**：`questions/05`（zstd vs gzip 在 EdgeOne 真链路，各 5 次取中位数）未结。
 - **未决项**：U1 codecs 顺序（= 悬案 05）、U2 chunkSize 按件可配、U3 asset 名 product 前缀、
   U4 接入排期——裁定权在本仓（移交信 §5）。

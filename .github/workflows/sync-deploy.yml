@@ -10,7 +10,11 @@ on:
   push:
     branches: [main]
   schedule:
-    - cron: '17 */6 * * *'      # 兜底：上游发 release 不会推我仓
+    # 兜底：上游发 release 不会推我仓。
+    # 6h → 1h（2026-11-02，extra-content mail/007 实测）：上游「删旧 tag + 发新 tag」后，
+    # catalogue 会在一整个 6h 窗口里指向已删除的 tag（实测两条 base 全 404）。
+    # 1h 把窗口缩到可接受范围；成本可接受（派生只拉 manifest，不拉 asset）。
+    - cron: '17 * * * *'
   workflow_dispatch:
 
 permissions:
