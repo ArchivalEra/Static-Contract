@@ -36,6 +36,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
 
@@ -253,9 +254,20 @@ def derive(sources, fetch_releases, fetch_bytes, check_runner, now, verbose=Fals
                 excluded.append({"repo": repo, "tag": tag, "reason": "missing manifest.json"})
                 continue
             except (urllib.error.URLError, OSError, TimeoutError) as e:
-                excluded.append({"repo": repo, "tag": tag,
-                                 "reason": "manifest unreachable: %s" % e})
-                continue
+                # ★ 网络失败**不是**「release 有问题」——那是纪律 1「测不到 ≠ 不存在」。
+                # 实测事故：一次 `No route to host` 就让 forge-geometry 从 catalogue 消失，
+                # 重跑即恢复。这类瞬断必须重试；重试仍失败才上报，且措辞标明是网络。
+                body = None
+                for _ in range(3):
+                    try:
+                        body = fetch_bytes(assets["manifest.json"]["browser_download_url"])
+                        break
+                    except (urllib.error.URLError, OSError, TimeoutError):
+                        time.sleep(2)
+                if body is None:
+                    excluded.append({"repo": repo, "tag": tag,
+                                     "reason": "manifest unreachable after 3 tries: %s" % e})
+                    continue
             entry, reasons = verify_entry(repo, rel, body, assets, check_runner)
             if entry is None:
                 excluded.append({"repo": repo, "tag": tag, "reasons": reasons})
@@ -377,6 +389,35 @@ def _selftest():
 
     case("★ 重复 id ⇒ SystemExit（两个 release 自称同一 id）",
          lambda: _dup_probe())
+
+    # ── 瞬断重试（纪律 1：测不到 ≠ 不存在）────────────────────────────────
+    def transient_then_ok():
+        """前两次网络失败、第三次成功 ⇒ 该 release 必须**上架**，不许被排除。"""
+        body = json.dumps({"schema": 2, "id": "R/p@1", "chunkSize": 5242880,
+                           "codecs": ["identity"], "products": {"p": {"form": "file"}},
+                           "entries": [{"product": "p", "name": "a.bin", "bytes": 3,
+                                        "sha256": "a" * 64,
+                                        "variants": [{"codec": "identity", "chunks": [
+                                            {"part": 0, "file": "p__a.bin.identity.000",
+                                             "bytes": 3, "sha256": "b" * 64}]}]}]}).encode()
+        dg = "sha256:" + hashlib.sha256(body).hexdigest()
+        calls = {"n": 0}
+
+        def flaky(_u):
+            calls["n"] += 1
+            if calls["n"] <= 2:
+                raise urllib.error.URLError("No route to host")
+            return body
+
+        def rels(_r):
+            return [{"tag_name": "t", "assets": [
+                {"name": "manifest.json", "digest": dg, "browser_download_url": "u"},
+                {"name": "p__a.bin.identity.000", "digest": "sha256:" + "b" * 64,
+                 "browser_download_url": "u2"}]}]
+        rs, ex = derive([{"repo": "R"}], rels, flaky, lambda m: [], "now")
+        return len(rs) == 1 and not ex
+    case("★ 瞬断重试：前两次网络失败、第三次成功 ⇒ 仍上架（测不到 ≠ 不存在）",
+         transient_then_ok)
 
     # ── G7 许可闸（v1.1：{id, url}）────────────────────────────────────
     def lic_man(schema=3, lic=None, drop=False):

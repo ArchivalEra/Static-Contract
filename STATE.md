@@ -229,6 +229,25 @@
   `Shirone-personalized/mail/009`，给他们两个方案（读 `files.json` / 手工加 LICENSE，推荐前者）。
   **配套**：构建产物新增 `files.json`（精确文件清单，同步方照抄，不手写列表）+
   自证「files.json 与实际产物逐条相等」；构建器自证 13 → 14 PASS。
+- **第三源接入 + 两条通道修好（2026-11-02）**：
+  **① `Octave-Full-Wasm` 已订阅**（`kind: "engine"`）—— 该词取自**内容契约**
+  （`v3-absorption-audit.md:63` 的 `src`/`pre`/`engine` 三值），不是新造。
+  用户裁定的 non-free 政策：**按 G1–G7 收，不额外加 policy** —— `wasm64ip` 链了
+  non-free Rust 排序核（`LicenseRef-nonfree-rust-sort-kernel`），形状合法故收录，
+  free/non-free 由读者看页面判断，协议不做价值判断。
+  我独立复跑（零下载判据）：**`463` 用例 / 0 问题**；`wasm32` 的 `octave.wasm`
+  第一块 5MiB 内 `atomics` 出现 **0** 次（他们的零-atomics 声明成立）。
+  他们另有一个 tag `wasm32-11.3.0-1ed3e528` **无 manifest.json**，被 G1 正确排除。
+  **② 修了一条真实健壮性缺陷**：首次派生时 `forge-geometry` 因一次 `No route to host`
+  被写进 excluded —— 那是把「测不到」判成「不存在」。已加 3 次重试 + 反向用例
+  （前两次失败第三次成功 ⇒ 必须上架）。派生器自证 20 → 21 PASS。
+  **③ shirone `026`**：两条通道的 `LICENSE` 死链都已修（Cloudflare 是扩展名白名单挡的、
+  EdgeOne 是手写列表漏的），都改为读 `files.json`。他们的 `stage-static-tree.py`
+  补了两个我示例代码的洞（清单有但源缺 ⇒ 必红；`../` 越界拒）——**比我给的方案强**。
+  他们撤掉了 `rm -rf __pycache__`（症状源已断）。CF 白名单边界（无扩展名只认
+  `LICENSE`/`NOTICE`/`COPYING`/`AUTHORS`）我按**安全收益**采纳：契约内客户端只请求
+  manifest 里 `file` 逐字给出的名字，**那些名字一定有扩展名**，所以该白名单不伤任何
+  契约内客户端。
 - **悬案**：`questions/05`（zstd vs gzip 在 EdgeOne 真链路，各 5 次取中位数）未结。
 - **未决项**：U1 codecs 顺序（= 悬案 05）、U2 chunkSize 按件可配、U3 asset 名 product 前缀、
   U4 接入排期——裁定权在本仓（移交信 §5）。
