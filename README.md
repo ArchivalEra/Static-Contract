@@ -76,7 +76,7 @@ Octave 集群的**静态分发契约权威仓**：协议正典、工具链、悬
 ① orphan 强推 `deploy` 分支（CF Pages / EdgeOne Pages 监听）；
 ② `actions/deploy-pages` 部署 GitHub Pages。
 通道：`https://archivalera.github.io/Static-Contract/` ·
-`https://static.mango-mesa.ccwu.cc/static/`（Cloudflare）·
+`https://static.mango-mesa.ccwu.cc/`（Cloudflare）·
 `https://isui.ren/static/`（EdgeOne，国内路径）。头语义（ETag/`304`/Content-Type）在站侧。
 
 **线上验收**：`scripts/verify-channels.py` 在部署后逐通道核对**本次产物指纹**

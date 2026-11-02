@@ -9,8 +9,8 @@
   },
   {
    "name": "cloudflare",
-   "base": "https://static.mango-mesa.ccwu.cc/static/",
-   "note": "shirone 侧 Worker：运行期回源 raw deploy 分支（含扩展名白名单 + 路径规范化防开放代理）",
+   "base": "https://static.mango-mesa.ccwu.cc/",
+   "note": "运行期回源 raw deploy 分支；2026-11-02 起从 /static/ 迁到根路径 /",
    "owned": false
   },
   {

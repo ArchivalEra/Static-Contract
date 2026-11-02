@@ -60,7 +60,7 @@
   复跑 `gh run list --workflow sync-deploy --repo ArchivalEra/Static-Contract`。
   **三通道现状（2026-11-01 全部上线，shirone `mail/read/003` 侧建 + 我复跑）**：
   GitHub Pages `https://archivalera.github.io/Static-Contract/`；
-  Cloudflare `https://static.mango-mesa.ccwu.cc/static/`（Worker `/static/*` 前缀路由）；
+  Cloudflare `https://static.mango-mesa.ccwu.cc/`（Worker 根路径，2026-11-02 从 `/static/*` 迁移）；
   EdgeOne `https://isui.ren/static/`（heart 中间件反代 CF Worker，国内路径）。
   我侧复跑（2026-11-01）：EdgeOne 通道 catalogue 哈希 `3fffe32ee34975a441aee0a357f10e9d`
   与 Pages 一致、ETag 条件请求 `304` ✓；CF 通道**从本机 000**（TLS 在 CF 边缘被重置，
@@ -286,7 +286,11 @@
     （连当时真实的两条旧 tag 一起抓出）。
   **不采纳的建议**：extra-content 建议在正典客户端算法节加「catalogue 是可回退列表」
   —— **协议不动**（用户明确裁定），该问题在派生侧用 H7 + 缩短窗口解决。
-- **Cloudflare 通道全 `404`（2026-11-02，无人值守时发现）**：
+- **Cloudflare 通道已修 + 路径迁移（2026-11-02 闭环）**：用户告知「cf 是改成 `/` 而不是
+  `/static` 了」。实测确认：根路径 `index.html`/`files.json` 全 `200`，`/static/` 全 `404`。
+  已更新 `site/channels.json` 的 `base`（`…/static/` → `…/`）与 README/STATE 的挂牌；
+  H6/H7 与「线上验收」都读该配置，故自动跟随。
+  **历史记录（保留，勿删）**：此前 `static.mango-mesa.ccwu.cc/static/*` 曾**全部 `404`**
   `static.mango-mesa.ccwu.cc/static/*` **全部 `404`**（`LICENSE` 是 `301`），
   而同一时刻 `isui.ren/static/*` 全部 `200`。**分界在 CF Worker，不在源。**
   我排除了三件事（各有复跑命令，已写进 `Shirone-personalized/mail/011`）：
