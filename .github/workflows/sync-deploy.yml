@@ -42,7 +42,12 @@ jobs:
           set -euo pipefail
           python3 scripts/sync-catalogue.py --selftest
           python3 scripts/sync-catalogue.py --out "$RUNNER_TEMP/catalogue.json"
+          # 同时放一份到仓根，供站点语言闸门 H4 检查（它要读真实排除原因）
+          cp "$RUNNER_TEMP/catalogue.json" site/catalogue.live.json
           echo "CATALOGUE_DERIVED=$RUNNER_TEMP/catalogue.json" >> "$GITHUB_ENV"
+
+      - name: 站点语言闸门（HTML 全英文 / 废弃契约必标 / catalogue 无中文）
+        run: python3 zreflect/check_site_lang.py
 
       - name: 构建站点
         run: python3 scripts/build-site.py --out site/dist

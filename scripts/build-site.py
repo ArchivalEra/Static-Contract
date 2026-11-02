@@ -222,7 +222,8 @@ def render_index(cat, fingerprint="", counts=None, channels=None):
     ex_rows = "\n".join(
         '<tr><td><code>%s</code></td><td><code>%s</code></td><td class="mono">%s</td></tr>'
         % (html.escape(x.get("repo", "?")), html.escape(x.get("tag", "?")),
-           html.escape("; ".join(x.get("reasons") or [])[:150]))
+           # 优先英文摘要（HTML 闸门要求全英文）；中文 reasons 只留在 catalogue 里给维护者
+           html.escape("; ".join(x.get("reasons_en") or x.get("reasons") or [])[:150]))
         for x in excluded) or '<tr><td colspan="3">(none)</td></tr>'
 
     specs = _publishable(SPECS, (".md",))

@@ -109,6 +109,30 @@ def _chunk_sha_map(man):
     return out
 
 
+_EN = {
+    "G1": "missing manifest.json",
+    "G2": "manifest digest mismatch with platform",
+    "G3": "invariant V1-V11 failed",
+    "G4": "chunk sha mismatch / asset missing on platform",
+    "G5": "schema not accepted (client accepts 2/3)",
+    "G6": "orphan asset not referenced by manifest",
+    "G7": "missing license {id, url}",
+}
+
+
+def reasons_en(reasons):
+    """给每条中文原因一个英文摘要（页面与 catalogue 对外都用这个）。
+
+    **不是翻译**，是按闸号分类 —— 中文原因保留给维护者，英文摘要给读者。
+    未知闸号一律给通用英文，**绝不透出中文**（HTML 闸门 H1 的判据）。
+    """
+    out = []
+    for r in reasons:
+        code = r.split(" ", 1)[0] if r[:2] in ("G1", "G2", "G3", "G4", "G5", "G6", "G7") else ""
+        out.append(_EN.get(code, "validation failed"))
+    return out
+
+
 def verify_entry(repo, rel, manifest_bytes, assets_by_name, check_runner):
     """验一条 release。返回 (entry or None, reasons)。
 
@@ -229,15 +253,18 @@ def derive(sources, fetch_releases, fetch_bytes, check_runner, now):
             try:
                 body = fetch_bytes(assets["manifest.json"]["browser_download_url"])
             except KeyError:
-                excluded.append({"repo": repo, "tag": tag, "reasons": ["G1 缺 manifest.json"]})
+                excluded.append({"repo": repo, "tag": tag, "reasons": ["G1 缺 manifest.json"],
+                                 "reasons_en": ["missing manifest.json"]})
                 continue
             except (urllib.error.URLError, OSError, TimeoutError) as e:
                 excluded.append({"repo": repo, "tag": tag,
-                                 "reasons": ["G1 manifest 取不到: %s" % e]})
+                                 "reasons": ["G1 manifest 取不到: %s" % e],
+                                 "reasons_en": ["manifest unreachable: %s" % e]})
                 continue
             entry, reasons = verify_entry(repo, rel, body, assets, check_runner)
             if entry is None:
-                excluded.append({"repo": repo, "tag": tag, "reasons": reasons})
+                excluded.append({"repo": repo, "tag": tag, "reasons": reasons,
+                             "reasons_en": reasons_en(reasons)})
             else:
                 try:
                     man = json.loads(body.decode("utf-8"))

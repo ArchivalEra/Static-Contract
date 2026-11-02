@@ -185,6 +185,16 @@
   新闸门 `zreflect/check_site_lang.py`（commit 相位，实测 **ran 10 / off 6 / failed 0**）：
   H1 HTML 无 CJK / H2 **完全废弃**的文档页面必须标（部分取代不强制，否则判据本身错）/
   H3 非权威文档必须有横幅。**两条阴性验证均正确检出**（塞中文、去横幅）。
+- **H1 漏洞已补（2026-11-02，线上实测抓到）**：首版闸门只查 `index.html`，
+  而**本地构建用的是空兜底 catalogue**（无 excluded）⇒ 永远查不到那条。
+  线上真实页面有 **40 个 CJK 字符**，来源是 `sync-catalogue.py` 的中文诊断消息
+  （`G5 schema=1（本客户端只认 2/3）`）被直接渲染进排除表。
+  修法：① 派生器给每条排除加 `reasons_en`（按闸号分类的英文摘要，中文 reasons
+  保留给维护者）；② 页面优先渲染 `reasons_en`；③ 闸门加 **H4**（catalogue 对外
+  字段不得含中文、excluded 必须有 `reasons_en`）；④ CI 把派生件同时写到
+  `site/catalogue.live.json` 供闸门读（gitignore），并在构建**前**跑闸门。
+  **用线上真实 catalogue 验证**：闸门报 6 个问题（H1 40 个 CJK + 5 条缺 reasons_en），
+  修复后重跑应全绿。
 - **悬案**：`questions/05`（zstd vs gzip 在 EdgeOne 真链路，各 5 次取中位数）未结。
 - **未决项**：U1 codecs 顺序（= 悬案 05）、U2 chunkSize 按件可配、U3 asset 名 product 前缀、
   U4 接入排期——裁定权在本仓（移交信 §5）。

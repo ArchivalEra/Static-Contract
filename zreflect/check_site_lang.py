@@ -39,6 +39,10 @@ GATE = meta("站点语言闸门",
 
 REPO = repo("")
 SPECS = os.path.join(REPO, "specs")
+# 真实派生 catalogue（CI 会写到这里；本地有则用之）
+CAT_ABS = os.path.join(REPO, "site", "catalogue.live.json")
+if not os.path.exists(CAT_ABS):
+    CAT_ABS = os.environ.get("SC_CATALOGUE", "")
 
 # CJK 区间：中日韩统一表意文字 + 扩展 A + 兼容表意 + 全角标点/符号
 CJK = re.compile(r"[\u3000-\u303f\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff"
@@ -52,10 +56,14 @@ AUTHORITY = {
 DEPRECATED_MARK = re.compile(r"(DEPRECATED|SUPERSEDED IN PART)")
 
 
-def _build_to(tmp):
-    """用派生 catalogue 构建一次站点（不联网：走兜底源会 warn，但产物结构一致）。"""
+def _build_to(tmp, cat=None):
+    """构建一次站点。**优先用真实派生 catalogue**（否则 excluded 是空的，
+    H2/H4 会漏检 —— 线上就因此出现过 40 个 CJK 字符）。"""
     env = dict(os.environ)
-    env.pop("CATALOGUE_DERIVED", None)
+    if cat and os.path.exists(cat):
+        env["CATALOGUE_DERIVED"] = cat
+    else:
+        env.pop("CATALOGUE_DERIVED", None)
     r = subprocess.run([sys.executable, os.path.join(REPO, "scripts", "build-site.py"),
                         "--out", tmp], capture_output=True, text=True, env=env, cwd=REPO)
     return r.returncode, r.stdout + r.stderr
@@ -116,6 +124,35 @@ def check_page_marks_deprecated(html, specs_dir):
     return probs
 
 
+def check_catalogue_en(cat_path):
+    """H4：catalogue 对外字段不得含中文（它是**公开发布的产物**，不是内部日志）。
+
+    为什么单列：页面渲染的排除原因来自 catalogue；闸门若只查 index.html，
+    而本地构建用的是空兜底源（无 excluded），**这条永远查不到** ——
+    实际线上就因为 `reasons` 里带中文，页面出现了 40 个 CJK 字符。
+    """
+    import json
+    probs = []
+    if not os.path.exists(cat_path):
+        return ["H4 catalogue 不存在：%s" % cat_path]
+    try:
+        d = json.load(open(cat_path, encoding="utf-8"))
+    except ValueError as e:
+        return ["H4 catalogue 非法 JSON: %s" % e]
+    for x in d.get("excluded") or []:
+        if not isinstance(x, dict):
+            continue
+        # reasons_en 是给读者的；reasons 是内部诊断
+        if not x.get("reasons_en"):
+            probs.append("H4 excluded %s/%s 缺 reasons_en（页面会退化成中文原因）"
+                         % (x.get("repo"), x.get("tag")))
+        for r in x.get("reasons_en") or []:
+            if CJK.search(r):
+                probs.append("H4 excluded %s/%s 的 reasons_en 含中文"
+                             % (x.get("repo"), x.get("tag")))
+    return probs
+
+
 def main():
     import tempfile
     import shutil
@@ -123,7 +160,7 @@ def main():
     probs = []
     tmp = tempfile.mkdtemp(prefix="sc-site-")
     try:
-        rc, log = _build_to(os.path.join(tmp, "dist"))
+        rc, log = _build_to(os.path.join(tmp, "dist"), cat=CAT_ABS)
         if rc != 0:
             probs.append("构建失败（rc=%d）：%s" % (rc, log.strip().splitlines()[-1:]))
             html = ""
@@ -137,6 +174,8 @@ def main():
         shutil.rmtree(tmp, ignore_errors=True)
 
     probs += check_specs_marked(SPECS)
+    if CAT_ABS:
+        probs += check_catalogue_en(CAT_ABS)
     if html:
         probs += check_page_marks_deprecated(html, SPECS)
 

@@ -52,3 +52,6 @@
 # 字节码缓存：白名单下 tools/*.py 的放行模式会被 *.pyc 绕过（实测踩过）
 __pycache__/
 *.pyc
+
+# 派生 catalogue 的实时副本（CI 写，供闸门读；不进 git）
+/site/catalogue.live.json
