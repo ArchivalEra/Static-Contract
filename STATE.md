@@ -211,6 +211,19 @@
   ⑤ H4 缺 catalogue 时静默跳过（「没跑 ≠ 通过」）；⑥ 兜底源 note 仍中文。
   闸门 H5 新增：页面 15 条相对链接逐条核对产物内文件（0 死链）；外链不探测
   （本机网络对 GitHub/Cloudflare 不稳，会误判）。
+- **死链判定修好（2026-11-02，用户指出）**：用户说「isui.ren/static 那边大部分链接都是死的，
+  出 `200` 有可能是 `404` 兜底页，你的判定需要修」。
+  **实测确认**：EdgeOne 对不存在路径返回 **`200` + 611B SPA 兜底页**；Pages 返回真 `404`。
+  我的原判据（只看状态码）**会被完全骗过** —— 且网络抖动时「URLError + 兜底页」
+  一起伪装成正常，最恶劣。
+  **修法**：闸门 H6 改为**内容指纹判定** —— 先请求一个绝不存在、带唯一后缀的路径取兜底指纹，
+  再逐链接比对 body sha256；等于兜底指纹 ⇒ 死链。**不可达也判失败**（重试 2 次防瞬断）。
+  实测：`github-pages 15/15 dead=0`、`edgeone 15/15 dead=1 (LICENSE)`、cloudflare 不可达（本机）。
+  **发现一条真实死链**：EdgeOne 的 `/static/LICENSE` 命中的是兜底页 —— 根因是 shirone 的
+  `deploy.yml` 同步列表**硬编码**且漏了 `LICENSE`（我 11-01 加的文件）。已发信
+  `Shirone-personalized/mail/009`，给他们两个方案（读 `files.json` / 手工加 LICENSE，推荐前者）。
+  **配套**：构建产物新增 `files.json`（精确文件清单，同步方照抄，不手写列表）+
+  自证「files.json 与实际产物逐条相等」；构建器自证 13 → 14 PASS。
 - **悬案**：`questions/05`（zstd vs gzip 在 EdgeOne 真链路，各 5 次取中位数）未结。
 - **未决项**：U1 codecs 顺序（= 悬案 05）、U2 chunkSize 按件可配、U3 asset 名 product 前缀、
   U4 接入排期——裁定权在本仓（移交信 §5）。
@@ -229,12 +242,12 @@
 
 | 键 | 值 | 测于 | 复跑命令 |
 |---|---|---|---|
-| `catalogue_releases` | **0** | 2026-11-02T08:35:20+0800 | `python3 -c "import json;print(len(json.load(open('site/catalogue.json'))['releases']))"` |
-| `mail_unread` | **0** | 2026-11-02T08:35:20+0800 | `find mail -maxdepth 1 -name '[0-9]*.md' | wc -l` |
-| `site_build_selftest_pass` | **13** | 2026-11-02T08:35:20+0800 | `python3 scripts/build-site.py --selftest 2>/dev/null | grep -c '^PASS'` |
-| `specs_md` | **7** | 2026-11-02T08:35:19+0800 | `ls specs/*.md | wc -l` |
-| `tool_check_release_selftest_pass` | **37** | 2026-11-02T08:35:20+0800 | `python3 tools/check-release-v4.py --selftest 2>/dev/null | grep -c '^PASS'` |
-| `tool_manifest_selftest_pass` | **43** | 2026-11-02T08:35:20+0800 | `python3 tools/make-manifest-v4.py --selftest 2>/dev/null | grep -c '^PASS'` |
+| `catalogue_releases` | **0** | 2026-11-02T13:28:11+0800 | `python3 -c "import json;print(len(json.load(open('site/catalogue.json'))['releases']))"` |
+| `mail_unread` | **0** | 2026-11-02T13:28:11+0800 | `find mail -maxdepth 1 -name '[0-9]*.md' | wc -l` |
+| `site_build_selftest_pass` | **14** | 2026-11-02T13:28:11+0800 | `python3 scripts/build-site.py --selftest 2>/dev/null | grep -c '^PASS'` |
+| `specs_md` | **7** | 2026-11-02T13:28:09+0800 | `ls specs/*.md | wc -l` |
+| `tool_check_release_selftest_pass` | **37** | 2026-11-02T13:28:11+0800 | `python3 tools/check-release-v4.py --selftest 2>/dev/null | grep -c '^PASS'` |
+| `tool_manifest_selftest_pass` | **43** | 2026-11-02T13:28:11+0800 | `python3 tools/make-manifest-v4.py --selftest 2>/dev/null | grep -c '^PASS'` |
 
 6 条事实。
 <!-- /AUTO:FACTS -->

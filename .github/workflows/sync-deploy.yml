@@ -46,7 +46,7 @@ jobs:
           cp "$RUNNER_TEMP/catalogue.json" site/catalogue.live.json
           echo "CATALOGUE_DERIVED=$RUNNER_TEMP/catalogue.json" >> "$GITHUB_ENV"
 
-      - name: 站点语言闸门（HTML 全英文 / 废弃契约必标 / catalogue 无中文）
+      - name: 站点闸门（英文 / 废弃标 / 链接）—— 构建前，查源与 catalogue
         run: python3 zreflect/check_site_lang.py
 
       - name: 构建站点
@@ -128,6 +128,16 @@ jobs:
       # 实测约 2-4 分钟，故 dispatch 过时给足 10 轮 × 30s；未 dispatch
       # （缺 token）时只给 6 轮 × 20s —— 那种情况下 EO 注定不会跟，闸门红
       # 是**如实报告**，不是误报。
+      # ★ 在线死链探测：**内容指纹**，不是状态码。
+      # EdgeOne 对不存在路径返回 200 + 兜底页（实测 611B），只看状态码会全绿。
+      # 放在线上验收之后 —— 那时三个通道都已吃到本次产物。
+      - name: 在线死链探测（各通道逐链接，指纹判定）
+        run: |
+          set -euo pipefail
+          # 在线探测发现死链 ⇒ 红。**某通道不可达 ⇒ 也红**（「它没问题」没有证据）。
+          # 若不希望某通道阻塞发布，把它的 base 从 site/channels.json 移除并写明原因。
+          python3 zreflect/check_site_lang.py --online
+
       - name: 线上验收（各通道必须吃到本次产物）
         run: |
           set -euo pipefail

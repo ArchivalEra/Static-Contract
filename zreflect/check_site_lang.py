@@ -28,10 +28,14 @@
 用法：
   python3 zreflect/check_site_lang.py            # 违规即非零
 """
+import hashlib
+import json
 import os
 import re
 import subprocess
 import sys
+import urllib.error
+import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from gate import meta, module_meta, repo                   # noqa: E402
@@ -105,6 +109,80 @@ def check_links(html, dist_dir):
             probs.append("H5 死链: %s（产物里没有这个文件）" % l)
     # 反向：产物里有文件但页面没链到（提示，不算失败）——只在 verbosely 打印
     return probs, len(links)
+
+
+def _http(url, timeout=20):
+    """取 (status, body)。异常返回 (类型名, b"")。"""
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "static-contract-gate/1"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.status, r.read()
+    except urllib.error.HTTPError as e:
+        return e.code, b""
+    except Exception as e:                                   # noqa: BLE001
+        return type(e).__name__, b""
+
+
+def probe_fallback(base):
+    """取兜底指纹。两种合法形态：
+      · 200 + HTML 兜底页（EdgeOne）⇒ 指纹 = body sha
+      · 404 + 空 body（Pages）⇒ 指纹 = "HTTP:<code>"，用于识别死链
+    只有**网络不可达**才算「取不到」。
+    """
+    code, body = _http(base.rstrip("/") + "/zzz-nonexistent-" + str(os.getpid()) + ".md")
+    if body:
+        return "sha:" + hashlib.sha256(body).hexdigest(), code
+    if isinstance(code, int) and code >= 400:
+        return "HTTP:%d" % code, code
+    return None, code
+
+
+def check_channels_online(channels, links, attempts=2):
+    """H6：逐通道逐链接在线探测。**用内容指纹，不用状态码。**
+
+    返回 (problems, stats)。不可达**算失败**（就算「它没问题」——某通道连不上时
+    那句话没有任何证据）。但网络抖动给 attempts 次机会，避免把瞬断当死链。
+    """
+    probs = []
+    stats = {}
+    for ch in channels:
+        name, base = ch.get("name", "?"), ch.get("base", "")
+        if not base:
+            probs.append("H6 通道 %s 缺 base" % name)
+            continue
+        fb_sha, fb_code = probe_fallback(base)
+        if fb_sha is None:
+            probs.append("H6 %s 兜底页取不到（%s）—— 无法判定死链" % (name, fb_code))
+            continue
+        dead, unreachable = [], []
+        for l in links:
+            last = None
+            for _ in range(attempts):
+                code, body = _http(base.rstrip("/") + "/" + l)
+                if body:
+                    last = (code, "sha:" + hashlib.sha256(body).hexdigest())
+                    if last[1] != fb_sha:
+                        break
+                elif isinstance(code, int):
+                    last = (code, "HTTP:%d" % code)
+                    if last[1] != fb_sha:
+                        break                 # 404 且指纹不是兜底 ⇒ 也算「不同」（会被下方判死）
+                else:
+                    last = (code, None)
+            if last is None or last[1] is None:
+                unreachable.append((l, last[0] if last else "unknown"))
+            elif last[1] == fb_sha:
+                dead.append(l)
+        if dead:
+            probs.append("H6 %s 死链 %d 条（返回兜底页/404）: %s"
+                         % (name, len(dead), ", ".join(dead[:6])))
+        if unreachable:
+            probs.append("H6 %s 不可达 %d 条（不可达不是「没问题」）: %s"
+                         % (name, len(unreachable),
+                            ", ".join("%s(%s)" % x for x in unreachable[:6])))
+        stats[name] = {"checked": len(links), "dead": len(dead),
+                       "unreachable": len(unreachable)}
+    return probs, stats
 
 
 def check_specs_marked(specs_dir):
@@ -231,6 +309,26 @@ def main():
             probs.append("H4 既无派生件也无兜底源 —— 未查不是通过")
     if html:
         probs += check_page_marks_deprecated(html, SPECS)
+
+    # H6 在线探测（内容指纹判定）。CI 用 --online 显式开启；
+    # 本地默认跳过并**明说**（跳过不是通过）。
+    if "--online" in sys.argv:
+        try:
+            cdoc = json.load(open(os.path.join(REPO, "site", "channels.json"),
+                                  encoding="utf-8"))
+            chans = cdoc.get("channels") or []
+        except (OSError, ValueError):
+            chans = []
+        rel = sorted({m for m in re.findall(r'href="([^"#]+)"', html)
+                      if not m.startswith(("http://", "https://", "mailto:", "#"))}) if html else []
+        if chans and rel:
+            o_probs, stats = check_channels_online(chans, rel)
+            probs += o_probs
+            for k, v in stats.items():
+                print("H6 %s: checked=%d dead=%d unreachable=%d"
+                      % (k, v["checked"], v["dead"], v["unreachable"]))
+    else:
+        print("H6：未在线探测（需 --online）—— 跳过不是通过")
 
     for x in probs:
         print("· %s" % x, file=sys.stderr)

@@ -166,6 +166,19 @@ def build(out):
                 chans = []
         with open(os.path.join(d, "index.html"), "w", encoding="utf-8") as f:
             f.write(render_index(cat, fingerprint, counts, chans))
+        # ★ 产物清单 = 同步方的唯一产地（第三方不该手写文件名列表）
+        #   实测事故：shirone 的 EO 同步脚本硬编码
+        #   `index.html catalogue.json sources.json README.md STATE.md maintaince.md contract tools`，
+        #   漏了 LICENSE ⇒ EdgeOne 上 /static/LICENSE 返回兜底页（200 伪装）。
+        manifest = []
+        for root, _dirs, files in os.walk(d):
+            for f in sorted(files):
+                manifest.append(os.path.relpath(os.path.join(root, f), d))
+        with open(os.path.join(d, "files.json"), "w", encoding="utf-8") as fh:
+            json.dump({"note": ("Exact artifact file list. Mirrors MUST copy exactly these "
+                               "paths -- do not hand-maintain a file list."),
+                       "count": len(manifest), "files": sorted(manifest)}, fh,
+                      ensure_ascii=False, indent=1)
         gate_dist(d)
         if os.path.exists(out):
             shutil.rmtree(out)
@@ -585,6 +598,22 @@ def selftest():
         finally:
             shutil.rmtree(d, ignore_errors=True)
     ok("★ 许可证：页面声明 AGPL-3.0 且 LICENSE 随站发布", license_marked)
+
+    # 14. files.json 必须与实际产物逐条相等（同步方的唯一产地，不许漂）
+    def files_manifest_accurate():
+        d = tempfile.mkdtemp()
+        try:
+            build(os.path.join(d, "dist"))
+            dist = os.path.join(d, "dist")
+            doc = json.load(open(os.path.join(dist, "files.json"), encoding="utf-8"))
+            actual = sorted(os.path.relpath(os.path.join(r, f), dist)
+                            for r, _dn, fs in os.walk(dist) for f in fs
+                            if f != "files.json")
+            return sorted(doc["files"]) == actual
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+    ok("★ files.json 与实际产物逐条相等（同步方照抄，不手写列表）",
+       files_manifest_accurate)
 
     bad = 0
     for label, passed, err in cases:
