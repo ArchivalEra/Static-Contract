@@ -112,9 +112,21 @@ def check_links(html, dist_dir):
 
 
 def _http(url, timeout=20):
-    """取 (status, body)。异常返回 (类型名, b"")。"""
+    """取 (status, body)。异常返回 (类型名, b"")。
+
+    支持代理：环境变量 `SC_HTTP_PROXY`（如 http://127.0.0.1:2080）。
+    为什么需要：某些网络出口对 Cloudflare 做了 SNI reset（实测 TLS reset），
+    没有代理时该通道恒 URLError —— 而「不可达」在 H6 里是失败，
+    会把「网络问题」误报成「死链」。用代理可区分两者。
+    """
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "static-contract-gate/1"})
+        proxy = os.environ.get("SC_HTTP_PROXY", "").strip()
+        if proxy:
+            op = urllib.request.build_opener(
+                urllib.request.ProxyHandler({"http": proxy, "https": proxy}))
+            with op.open(req, timeout=timeout) as r:
+                return r.status, r.read()
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return r.status, r.read()
     except urllib.error.HTTPError as e:

@@ -218,7 +218,12 @@
   一起伪装成正常，最恶劣。
   **修法**：闸门 H6 改为**内容指纹判定** —— 先请求一个绝不存在、带唯一后缀的路径取兜底指纹，
   再逐链接比对 body sha256；等于兜底指纹 ⇒ 死链。**不可达也判失败**（重试 2 次防瞬断）。
-  实测：`github-pages 15/15 dead=0`、`edgeone 15/15 dead=1 (LICENSE)`、cloudflare 不可达（本机）。
+  实测（三通道逐条，Cloudflare 经 `2080` 代理）：
+  `github-pages 15/15 dead=0` ✅ ·
+  `cloudflare 15/15 dead=1 (LICENSE → 404)` ❌ ·
+  `edgeone 15/15 dead=1 (LICENSE → 兜底页 200)` ❌。
+  **闸门支持 `SC_HTTP_PROXY` 环境变量** —— 本机对 Cloudflare 有 TLS reset，
+  没代理时该通道恒 URLError，会把「网络问题」误报成「死链」；代理能区分两者。
   **发现一条真实死链**：EdgeOne 的 `/static/LICENSE` 命中的是兜底页 —— 根因是 shirone 的
   `deploy.yml` 同步列表**硬编码**且漏了 `LICENSE`（我 11-01 加的文件）。已发信
   `Shirone-personalized/mail/009`，给他们两个方案（读 `files.json` / 手工加 LICENSE，推荐前者）。
