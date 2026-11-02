@@ -185,13 +185,27 @@ def check_channels_online(channels, links, attempts=2):
                 unreachable.append((l, last[0] if last else "unknown"))
             elif last[1] == fb_sha:
                 dead.append(l)
+        # ★ 归属判断：**只有我方管线（owned=true）的失败阻塞发布**。
+        # 外部通道（CF/EO）挂了不该拦我的产物上线 —— 那是别人的故障，
+        # 我发不出去只会让问题叠加（我的新产物上不去，他们的通道还没人修）。
+        # 但**必须报告**：静默略过等于把别人的故障藏起来。
+        owned = bool(ch.get("owned"))
+        tag = "" if owned else "（外通道，不阻塞发布）"
         if dead:
-            probs.append("H6 %s 死链 %d 条（返回兜底页/404）: %s"
-                         % (name, len(dead), ", ".join(dead[:6])))
+            msg = ("H6 %s 死链 %d 条（返回兜底页/404）: %s"
+                   % (name, len(dead), ", ".join(dead[:6])))
+            if owned:
+                probs.append(msg)
+            else:
+                print("⚠ %s%s" % (msg, tag))
         if unreachable:
-            probs.append("H6 %s 不可达 %d 条（不可达不是「没问题」）: %s"
-                         % (name, len(unreachable),
-                            ", ".join("%s(%s)" % x for x in unreachable[:6])))
+            msg = ("H6 %s 不可达 %d 条（不可达不是「没问题」）: %s"
+                   % (name, len(unreachable),
+                      ", ".join("%s(%s)" % x for x in unreachable[:6])))
+            if owned:
+                probs.append(msg)
+            else:
+                print("⚠ %s%s" % (msg, tag))
         stats[name] = {"checked": len(links), "dead": len(dead),
                        "unreachable": len(unreachable)}
     return probs, stats

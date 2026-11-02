@@ -286,6 +286,20 @@
     （连当时真实的两条旧 tag 一起抓出）。
   **不采纳的建议**：extra-content 建议在正典客户端算法节加「catalogue 是可回退列表」
   —— **协议不动**（用户明确裁定），该问题在派生侧用 H7 + 缩短窗口解决。
+- **Cloudflare 通道全 `404`（2026-11-02，无人值守时发现）**：
+  `static.mango-mesa.ccwu.cc/static/*` **全部 `404`**（`LICENSE` 是 `301`），
+  而同一时刻 `isui.ren/static/*` 全部 `200`。**分界在 CF Worker，不在源。**
+  我排除了三件事（各有复跑命令，已写进 `Shirone-personalized/mail/011`）：
+  ① 不是我的产物 —— `deploy` 分支 17 文件齐全（含 `files.json`）；
+  ② 不是缓存 —— `?ts=` 绕过照样 `404`；
+  ③ 不是回源目标 —— raw `deploy/files.json` ⇒ `200`、`count: 16`。
+  异常组合：**有扩展名的 `404`、无扩展名的 `301`** —— 扩展名白名单解释不了，
+  更像 Worker 的 `/static/*` 路由整体没挂上。已发信，不碰他们仓。
+  **顺带修了 H6 的一个设计缺陷**：原来任何通道失败都阻塞发布 ——
+  那会让「别人的通道挂了」拦停「我的产物上线」，问题叠加。
+  现在 `site/channels.json` 加 `owned` 字段：**只有我方管线（github-pages）
+  的失败阻塞发布**；外部通道失败打 `⚠` 并明说「不阻塞发布」，但**绝不静默**。
+  实测：github-pages dead=0 / edgeone dead=0 / cloudflare dead=16 → 警告，`rc=0`。
 - **悬案**：`questions/05`（zstd vs gzip 在 EdgeOne 真链路，各 5 次取中位数）未结。
 - **未决项**：U1 codecs 顺序（= 悬案 05）、U2 chunkSize 按件可配、U3 asset 名 product 前缀、
   U4 接入排期——裁定权在本仓（移交信 §5）。
