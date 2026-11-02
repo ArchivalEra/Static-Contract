@@ -331,8 +331,31 @@ def main():
             chans = cdoc.get("channels") or []
         except (OSError, ValueError):
             chans = []
-        rel = sorted({m for m in re.findall(r'href="([^"#]+)"', html)
-                      if not m.startswith(("http://", "https://", "mailto:", "#"))}) if html else []
+        # ★ 遍历源 = 产物清单（files.json），不是 HTML 里的链接。
+        # 真实边界（shirone mail/027 §3 指出）：H6 原判据是「HTML 里的相对链接」，
+        # 于是**产物里存在、但 index.html 不引用的文件永远不会被检查**。
+        # 实测：`files.json` 与 `index.html` 本身就不在任何 href 里 —— 漏检。
+        # 现在两份都查：H5 查 HTML 链接指向的（渲染完整性），
+        # H6 查 files.json 列出的全部（分发完整性）。两者各自独立。
+        # 从**每个通道**取它自己的 files.json —— 这才能发现"某通道产物清单缺件"。
+        # 拿本地清单去查远端会漏掉"通道少发了文件"那一类。
+        rel_by_chan = {}
+        for ch in chans:
+            b = (ch.get("base") or "").rstrip("/")
+            code, body = _http(b + "/files.json")
+            try:
+                doc = json.loads(body.decode("utf-8")) if body else {}
+                rel_by_chan[ch.get("name")] = doc.get("files") or []
+            except (ValueError, UnicodeDecodeError):
+                rel_by_chan[ch.get("name")] = []
+        rel = sorted({x for v in rel_by_chan.values() for x in v})
+        if not rel and html:
+            # 本地无清单时回落到 HTML 链接（并明说覆盖面变窄）
+            rel = sorted({m for m in re.findall(r'href="([^"#]+)"', html)
+                          if not m.startswith(("http://", "https://", "mailto:", "#"))})
+            print("H6：无 files.json 清单，回落到 HTML 链接（覆盖面变窄，不含未引用产物）")
+        for k, v in rel_by_chan.items():
+            print("H6 %s: files.json 列出 %d 个文件" % (k, len(v)))
         if chans and rel:
             o_probs, stats = check_channels_online(chans, rel)
             probs += o_probs

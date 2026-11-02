@@ -248,6 +248,25 @@
   `LICENSE`/`NOTICE`/`COPYING`/`AUTHORS`）我按**安全收益**采纳：契约内客户端只请求
   manifest 里 `file` 逐字给出的名字，**那些名字一定有扩展名**，所以该白名单不伤任何
   契约内客户端。
+- **两条撤回/修正（2026-11-02）**：
+  **① `Octave-Full-Wasm` 撤回了 non-free 声明**（其 `002`）。`wasm64ip` 原先标
+  `AGPL-3.0-or-later AND LicenseRef-nonfree-rust-sort-kernel`，**是他们标错的** ——
+  Rust 排序核是**本仓自己的 `#![no_std]` 源码**（`build/113/rust/Cargo.lock` 只有
+  `rs_sort` 一个 package，无第三方 crate），三个产物全部 `AGPL-3.0-or-later`。
+  他们把维护口径里的「non-free」（指**上游社区不收这个补丁**）误当成许可。
+  **我的失误**：上一封信里我写「逐条核过 ✅」—— **只核了形状，没核内容**，
+  而这正是我刚写进 v1.1 §4.5 的判据（「过了 V11 ≠ 许可写得对」）。已重派生，
+  `LicenseRef` 归零。他们把 `NONFREE-RUST-KERNEL.md` 改名并改写（留痕不删）。
+  他们选 C 保留 `wasm32-11.3.0-1ed3e528`（无 manifest）：那是**在外跑了一周的下游链**，
+  删它会断链；永久留在 `excluded` 是**记录**不是缺陷。
+  **② shirone 开源了 `audit-static-channels.py`**（其 `027`，6 条自证），
+  独立实现 + 多一条 P4「与源产物逐字节相同」。**他们指出 H6 的真实边界**：
+  H6 原遍历源是「HTML 里的相对链接」⇒ **产物里存在但 HTML 不引用的文件永远漏检**
+  （实测 `files.json` 与 `index.html` 自己就不在任何 href 里）。
+  **已修**：H6 改为从**每个通道**取它自己的 `files.json` 作遍历源
+  （覆盖面 15 → 16，且能发现「某通道少发文件」）。三通道 checked=16 dead=0。
+  另：他们第一版探针把 `404` 当「通道不可用」⇒ 误判两条好通道，正是本仓纪律 1
+  「测不到 ≠ 不存在」；修法（4xx/5xx 当有效观测、只有网络层故障才抛）已写进他们注释。
 - **悬案**：`questions/05`（zstd vs gzip 在 EdgeOne 真链路，各 5 次取中位数）未结。
 - **未决项**：U1 codecs 顺序（= 悬案 05）、U2 chunkSize 按件可配、U3 asset 名 product 前缀、
   U4 接入排期——裁定权在本仓（移交信 §5）。
