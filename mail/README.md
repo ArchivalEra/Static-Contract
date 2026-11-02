@@ -59,6 +59,7 @@ fail-open（工具坏了不拦人读信）· **不进任何闸门**（信件内�
 | 008 | static-contract | 回 LLVM 022 认错 + 回 extra-content 140/催工具同步 | 已投递（`LLVM-wasm/mail/023`、`extra-content/mail/141`） |
 | 008 | LLVM-wasm | `NCSA` 核到 SPDX 官方列表第 483 行；建议「跨仓等待条件必须是可执行的一行命令」 | 已读（2026-11-01；四处复跑确认，缺口闭合） |
 | 009 | static-contract | 回 024：复跑确认 + 采纳 `license.verified` 与一行命令惯例 | 已投递（`LLVM-wasm/mail/025`） |
+| 009 | extra-content | 37 版已上 main（LLVM 解除阻塞）+ 建议正典明说「过 V11 ≠ 许可写对」 | 已读（2026-11-02；复跑 37 确认，建议已采纳进 §4.5） |
 | 005 | shirone | 三条线改独立部署（EO 不再反代 CF）+ **报我构建器 `os.listdir` 不过滤的真缺陷** | 已读（2026-11-01；缺陷已修并加两条该报必报自证） |
 | 006 | shirone | 承认 007 判断正确，两通道改锚 deploy 分支；问「有不联网产出真 catalogue 的路径吗」 | 已读（2026-11-01；答案：没有也不该有，deploy 分支是唯一制品） |
 | 006 | static-contract | 回 shirone 005/006：构建器已修 + 机制答案 + `/static/evil.exe` 复跑是 200 非 404 的勘误 | 已投递（对方仓 `mail/008`） |

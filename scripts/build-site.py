@@ -18,6 +18,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 
@@ -26,6 +27,7 @@ SPECS = os.path.join(HERE, "specs")
 TOOLS = os.path.join(HERE, "tools")
 CATALOGUE_SRC = os.path.join(HERE, "site", "catalogue.json")
 SOURCES_SRC = os.path.join(HERE, "site", "sources.json")
+CHANNELS_SRC = os.path.join(HERE, "site", "channels.json")
 README = os.path.join(HERE, "README.md")
 
 # 开放词表超集：正典 V9 codecs 是开放词表，闸门按超集匹配宁可误拒不漏放
@@ -85,6 +87,18 @@ def gate_dist(dist):
 
 
 # ── 构建 ─────────────────────────────────────────────────────────────────────
+def _selftest_count(script):
+    """跑某个工具的自证，数 PASS 行。**失败返回 None，不编数字**。"""
+    try:
+        r = subprocess.run([sys.executable, os.path.join(HERE, script), "--selftest"],
+                           capture_output=True, text=True, timeout=120)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if r.returncode != 0:
+        return None
+    return sum(1 for ln in r.stdout.splitlines() if ln.startswith("PASS"))
+
+
 def _publishable(src_dir, suffixes):
     """该目录里**可以发布**的文件名（排序）。目录一律不收。
 
@@ -133,8 +147,23 @@ def build(out):
         shutil.copy2(SOURCES_SRC, os.path.join(d, "sources.json"))
         for fname in ("README.md", "STATE.md", "maintaince.md", "LICENSE"):
             shutil.copy2(os.path.join(HERE, fname), os.path.join(d, fname))
+        # 自证数实测（不手抄）；工具不在就明说未知。
+        # ⚠️ 自证模式下不跑自证（build-site --selftest 会调 build() ⇒ 递归爆栈）
+        if os.environ.get("SC_BUILD_SELFTEST") == "1":
+            counts, chans = {}, []
+        else:
+            counts = {k: _selftest_count(v) for k, v in (
+                ("gen", "tools/make-manifest-v4.py"),
+                ("chk", "tools/check-release-v4.py"),
+                ("build", "scripts/build-site.py"),
+                ("cat", "scripts/sync-catalogue.py"))}
+            try:
+                cdoc = json.load(open(CHANNELS_SRC, encoding="utf-8"))
+                chans = cdoc.get("channels") or []
+            except (OSError, ValueError):
+                chans = []
         with open(os.path.join(d, "index.html"), "w", encoding="utf-8") as f:
-            f.write(render_index(cat, fingerprint))
+            f.write(render_index(cat, fingerprint, counts, chans))
         gate_dist(d)
         if os.path.exists(out):
             shutil.rmtree(out)
@@ -144,7 +173,7 @@ def build(out):
     return out
 
 
-def render_index(cat, fingerprint=""):
+def render_index(cat, fingerprint="", counts=None, channels=None):
     """页面形态照 **he.net**（2026-11-01 用户裁定：「去参考 he.net，纯 html 才对得起
     我们这么实用的静态站」）。
 
@@ -159,6 +188,26 @@ def render_index(cat, fingerprint=""):
     excluded = cat.get("excluded") or []
     n_rel, n_exc = len(releases), len(excluded)
     verified = (cat.get("verified_at") or "未派生（源文件兜底）")
+    counts = counts or {}
+    channels = channels or []
+
+    def _cnt(k):
+        v = counts.get(k)
+        return ("%d PASS" % v) if isinstance(v, int) else "未测到"
+
+    # 通道表：从 site/channels.json 生成（**不手写**）
+    if channels:
+        # note 里是实现细节（长），表格只放「形态」摘要；完整 note 收起为 title 属性
+        ch_rows = "\n".join(
+            '<tr><td>%s</td><td class="mono"><a href="%s" title="%s">%s</a></td>'
+            '<td class="m">%s</td></tr>'
+            % (html.escape(c.get("name", "?")), html.escape(c.get("base", "#")),
+               html.escape(c.get("note", "")),
+               html.escape(c.get("base", "?").rstrip("/").split("//")[-1]),
+               html.escape(c.get("note", "").split("；")[0].split("（")[0][:40]))
+            for c in channels)
+    else:
+        ch_rows = '<tr><td colspan="3">（channels.json 未配置）</td></tr>' 
 
     rows = "\n".join(
         "<tr><td><a href=\"%smanifest.json\"><code>%s</code></a></td>"
@@ -373,9 +422,11 @@ pre { font-family:monospace; font-size:100%; background-color:#f4f4f8;
     <div class="block">
       <div class="caption"><a name="tools" style="color:#fff">工具链</a></div>
       <div class="content">
-        <p>生成器自证 <code>43 PASS / 0 fail</code>；校验器 <code>26 PASS / 0 fail</code>
-           （V1&ndash;V10 逐条反向）。复跑：<br />
-           <code>python3 tools/make-manifest-v4.py --selftest</code><br />
+        <p>生成器自证 <code>@@CNT_GEN@@</code>；校验器 <code>@@CNT_CHK@@</code>
+           （V1&ndash;V11 逐条反向）。站点构建器 <code>@@CNT_BUILD@@</code>；
+           catalogue 派生器 <code>@@CNT_CAT@@</code>。<br />
+           <small>（以上数字由构建器**实测**填入，不手抄 —— 手抄的数字从写下那刻起就开始腐烂。）</small><br />
+           复跑：<code>python3 tools/make-manifest-v4.py --selftest</code> ·
            <code>python3 tools/check-release-v4.py --selftest</code></p>
         <ul class="doclist">
 @@TOOLS@@
@@ -403,15 +454,7 @@ pre { font-family:monospace; font-size:100%; background-color:#f4f4f8;
       <div class="content">
         <table>
           <tr><th>通道</th><th>URL</th><th>形态</th></tr>
-          <tr><td>GitHub Pages</td>
-              <td class="mono"><a href="https://archivalera.github.io/Static-Contract/">archivalera.github.io/Static-Contract/</a></td>
-              <td>本仓 workflow 直发</td></tr>
-          <tr><td>Cloudflare</td>
-              <td class="mono"><a href="https://static.mango-mesa.ccwu.cc/static/">static.mango-mesa.ccwu.cc/static/</a></td>
-              <td>运行期回源 deploy 分支</td></tr>
-          <tr><td>EdgeOne</td>
-              <td class="mono"><a href="https://isui.ren/static/">isui.ren/static/</a></td>
-              <td>独立静态树（国内路径）</td></tr>
+@@CHANNELS@@
         </table>
         <p>三通道逐字同源，页脚指纹可核对。字节始终在 GitHub release / 反代，
            不在本站。</p>
@@ -422,12 +465,16 @@ pre { font-family:monospace; font-size:100%; background-color:#f4f4f8;
       <div class="caption">站点信息</div>
       <div class="content">
         <address>
-          <b>本站（含页面、契约正典、工具链）以
-          <a href="https://www.gnu.org/licenses/agpl-3.0.html">AGPL-3.0</a> 授权。</b>
+          <b class="copy">&copy; 2026 ArchivalEra. All rights reserved.</b><br />
+          本站（页面、契约正典、工具链）以
+          <a href="https://www.gnu.org/licenses/agpl-3.0.html">AGPL-3.0</a> 授权 &mdash;
           全文：<a href="LICENSE">LICENSE</a> &middot;
           源码：<a href="https://github.com/ArchivalEra/Static-Contract">GitHub</a><br />
           <b>收录的 release 不在本站授权范围内</b> &mdash; 每个 release 的许可归其发布方，
-          见该 release 的 <code>manifest.json</code> 与源仓。本站只托管<b>元数据</b>。<br /><br />
+          逐条列在
+          <a href="catalogue.json">catalogue.json</a>（<code>license.id</code> +
+          <code>license.url</code>）与各 release 的 <code>manifest.json</code>。
+          本站只托管<b>元数据</b>，不托管任何字节。<br /><br />
           catalogue verified_at: <span class="mono">@@VERIFIED@@</span><br />
           @@FP@@<br />
           本站零 JS、零外链资源 &mdash; 纯 XHTML 1.1 + CSS，文本浏览器可读。<br />
@@ -446,11 +493,17 @@ pre { font-family:monospace; font-size:100%; background-color:#f4f4f8;
    .replace("@@TOOLS@@", _links(tools, "tools")) \
    .replace("@@NREL@@", str(n_rel)).replace("@@NEXC@@", str(n_exc)) \
    .replace("@@NSPECS@@", str(len(specs))).replace("@@NTOOLS@@", str(len(tools))) \
+   .replace("@@CNT_GEN@@", _cnt("gen")) \
+   .replace("@@CNT_CHK@@", _cnt("chk")) \
+   .replace("@@CNT_BUILD@@", _cnt("build")) \
+   .replace("@@CNT_CAT@@", _cnt("cat")) \
+   .replace("@@CHANNELS@@", ch_rows) \
    .replace("@@VERIFIED@@", html.escape(verified)) \
    .replace("@@FP@@", html.escape(fingerprint))
 
 # ── 自证 ─────────────────────────────────────────────────────────────────────
 def selftest():
+    os.environ["SC_BUILD_SELFTEST"] = "1"
     cases = []
     seen = set()
 

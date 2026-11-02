@@ -162,6 +162,19 @@
   ② `maintaince.md` 加惯例 **「跨仓等待条件必须是可执行的一行命令」**——
   说「已就绪」时必须附它现在返回什么（下游只能测它 clone 到的东西）。
   工具同步**仍未解除**（截至本条：extra-content main 仍 `35 PASS`），LLVM 继续等是对的。
+- **站点数据自动化（2026-11-02）**：页面里三处手写数据全部改为自动读取。
+  ① **自证数**：构建时跑 `--selftest` 数 PASS 行（生成器 / 校验器 / 构建器 / 派生器四个）；
+  **发现真实漂移**——页面上手写的「校验器 26 PASS」早已过时（实为 37），
+  自动读取后才暴露。② **通道表**：从 `site/channels.json` 生成（原来手写三个 URL）。
+  ③ **收录/排除**：本来就从派生 catalogue 读，未变。页脚加 `© 2026 ArchivalEra`。
+  **自证期间不跑自证**（`SC_BUILD_SELFTEST=1`）——否则 `build-site --selftest` 会
+  调 `build()` ⇒ 自己调自己 ⇒ 递归爆栈（实测踩到，已修）。构建器自证仍 13 PASS。
+- **extra-content 已同步 37（2026-11-02）**：`git clone && --selftest` ⇒ `37 PASS`（复跑确认）。
+  LLVM 的阻塞**已解除**。他们信里写 `upgrade-manifest-license.py` 是 13 PASS，
+  实测 **25 PASS**（数字又漂了 —— 正好印证本节「站点数据自动化」的必要性）。
+  **采纳他们建议写进正典 §4.5**：`license` 过了 V11 **≠** 许可写得对 ——
+  V11 只挡机械错形，语义正确性必须逐条核。附三次同一夜的实例
+  （我两次推断 + extra-content 一次推断，**三次都过了 V11，三次内容都错**）。
 - **悬案**：`questions/05`（zstd vs gzip 在 EdgeOne 真链路，各 5 次取中位数）未结。
 - **未决项**：U1 codecs 顺序（= 悬案 05）、U2 chunkSize 按件可配、U3 asset 名 product 前缀、
   U4 接入排期——裁定权在本仓（移交信 §5）。
@@ -180,12 +193,12 @@
 
 | 键 | 值 | 测于 | 复跑命令 |
 |---|---|---|---|
-| `catalogue_releases` | **0** | 2026-11-01T21:55:43+0800 | `python3 -c "import json;print(len(json.load(open('site/catalogue.json'))['releases']))"` |
-| `mail_unread` | **0** | 2026-11-01T21:55:43+0800 | `find mail -maxdepth 1 -name '[0-9]*.md' | wc -l` |
-| `site_build_selftest_pass` | **13** | 2026-11-01T21:55:43+0800 | `python3 scripts/build-site.py --selftest 2>/dev/null | grep -c '^PASS'` |
-| `specs_md` | **7** | 2026-11-01T21:55:41+0800 | `ls specs/*.md | wc -l` |
-| `tool_check_release_selftest_pass` | **37** | 2026-11-01T21:55:43+0800 | `python3 tools/check-release-v4.py --selftest 2>/dev/null | grep -c '^PASS'` |
-| `tool_manifest_selftest_pass` | **43** | 2026-11-01T21:55:43+0800 | `python3 tools/make-manifest-v4.py --selftest 2>/dev/null | grep -c '^PASS'` |
+| `catalogue_releases` | **0** | 2026-11-02T08:35:20+0800 | `python3 -c "import json;print(len(json.load(open('site/catalogue.json'))['releases']))"` |
+| `mail_unread` | **0** | 2026-11-02T08:35:20+0800 | `find mail -maxdepth 1 -name '[0-9]*.md' | wc -l` |
+| `site_build_selftest_pass` | **13** | 2026-11-02T08:35:20+0800 | `python3 scripts/build-site.py --selftest 2>/dev/null | grep -c '^PASS'` |
+| `specs_md` | **7** | 2026-11-02T08:35:19+0800 | `ls specs/*.md | wc -l` |
+| `tool_check_release_selftest_pass` | **37** | 2026-11-02T08:35:20+0800 | `python3 tools/check-release-v4.py --selftest 2>/dev/null | grep -c '^PASS'` |
+| `tool_manifest_selftest_pass` | **43** | 2026-11-02T08:35:20+0800 | `python3 tools/make-manifest-v4.py --selftest 2>/dev/null | grep -c '^PASS'` |
 
 6 条事实。
 <!-- /AUTO:FACTS -->
