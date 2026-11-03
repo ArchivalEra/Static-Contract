@@ -48,6 +48,7 @@ Reproduce: `python3 tools/make-manifest-v4.py --selftest && python3 tools/check-
 | `zreflect/` | Einfacht fact-system platform (vendored from `vendor/Einfacht` at `6e4e6e8`) + this repository's data-layer collector; ledger `FACTS.json` (**do not hand-edit** — run `zreflect/facts.py`) |
 | `reflect-hooks/` | Git hooks and the knob carrier (install: `sh reflect-hooks/install.sh`; pre-commit re-renders machine blocks and runs every gate in the commit phase) |
 | `mail/` | Cross-repository mail inbox (rules in `mail/README.md`: append-only, numbers increase, delivery ≠ commit) |
+| `docs/` | Incident log and user rulings — repository only, **not published to the site** (rulings keep the original Chinese wording as evidence) |
 | `scripts/` | Zero-dependency scripts: `mail-read.py` (read mail), `build-site.py` (build the site, self-test 14/14), `sync-catalogue.py` (strict catalogue derivation G1–G7, self-test 21/21), `verify-channels.py` (online acceptance, self-test 10/10) |
 | `vendor/Einfacht` | Anti-hallucination fact-system suite (upstream `6e4e6e8`, vendored snapshot) |
 

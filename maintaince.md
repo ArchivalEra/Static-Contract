@@ -26,6 +26,8 @@ and its gates are in `STATE.md`).
 | What may not change | canon §3 invariants V1–V10 + §8, the criteria that killed rejected designs |
 | What the site lists | `site/catalogue.json` (the only data source; the builder reads nothing else) |
 | What the site looks like | `scripts/build-site.py` (artifact list and gates both live in its declaration) |
+| Incident log | `docs/incidents.md` — what broke, root cause, fix (repository only, not published) |
+| User rulings | `docs/rulings.md` — original wording preserved (repository only, not published) |
 | Open questions | `questions/` (each carries a settling criterion; 05 is unresolved) |
 | Cross-repository mail | `mail/` (rules: append-only, numbers increase, delivery ≠ commit) |
 | The anti-hallucination system itself | `vendor/Einfacht/` (upstream `6e4e6e8`, vendored snapshot) |
@@ -78,7 +80,7 @@ and its gates are in `STATE.md`).
 
 - **Cataloguing a release**: **no longer a manual edit**. Once a publisher publishes a GitHub
   release it is onboarded (provided the repository is in the subscription list); `sync-deploy`
-  derives the catalogue on every push and on a timer, and only releases that pass G1–G6 go live.
+  derives the catalogue on every push and on a timer, and only releases that pass G1–G7 go live.
   Adding a repository = adding one line to `site/sources.json` (an explicit decision). A bad release
   never enters the catalogue, and the reason is written into the catalogue's `excluded` (public,
   auditable).

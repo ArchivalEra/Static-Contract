@@ -1,8 +1,8 @@
 # Live State (Static-Contract)
 
 This file answers one question: **what is true now**. Not what happened, not why.
-Incident history lives in `docs/incidents.md`; user rulings in `docs/rulings.md`.
-Numbers are never typed here — they are `[[...]]` references into the fact ledger.
+Incident history and user rulings are kept in the repository under `docs/` and are not
+published to the site. Numbers are never typed here — they are `[[...]]` references into the fact ledger.
 
 ## Role
 
@@ -10,7 +10,7 @@ Numbers are never typed here — they are `[[...]]` references into the fact led
 Every package comes either from GitHub (release direct link) or through a reverse
 proxy. The site publishes metadata and contract documents only.
 
-Ruling text: `docs/rulings.md` R-001.
+Ruling text: `docs/rulings.md` R-001 (repository only, not published).
 
 ## Canon
 

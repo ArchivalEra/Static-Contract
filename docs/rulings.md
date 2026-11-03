@@ -539,14 +539,13 @@ then 「不不不，打错字了，全英文」
 original text with no emoji. No — I typed it wrong: full English.
 
 **Consequences:**
-- The corrected requirement is full English, not merely "no emoji". `STATE.md` is
-  English and measures zero CJK characters.
-- This ruling is **not fully applied** as of 2026-11-03, and the gap is recorded rather
-  than papered over: `README.md` still holds 1268 CJK characters, `maintaince.md` 844,
-  and the `specs/` bodies remain Chinese (3338 CJK in v1.1 alone). The specs also
-  still carry emoji, 6 to 25 per document.
-- R-026 is the later ruling that actually forces the rest of the translation and
-  separates live state from the contract body.
+- The corrected requirement is full English, not merely "no emoji".
+- Applied 2026-11-03. All ten published `.md` files measure zero CJK, zero emoji and
+  zero circled numerals in their prose. Gate H8 enforces it from then on.
+- **One carve-out:** the machine blocks at the foot of `STATE.md` (`AUTO:FACTS`,
+  `AUTO:GATES`) still carry CJK, because their templates live in the vendored platform
+  under `zreflect/`. The maintainer ruled that this is acceptable: a generated ledger
+  is not prose. H8 therefore checks only text outside those blocks.
 
 ---
 

@@ -94,8 +94,11 @@ def check_html_lang(html):
 
 # 发布到站点的 .md 必须全英文、无表情、无圈号（用户裁定 2026-11-03）。
 # `docs/rulings.md` 例外：它**不进站点**（保留用户中文原话，那是判据的历史证据）。
+# 覆盖面按「实际在文档里出现过的」扩：⭕ ⬜ ⏰ ⌛ ⏩ ™ 都漏过（review 抓到）。
 EMOJI = re.compile(r"[\U0001F300-\U0001FAFF\u2600-\u27BF\u2B50\u2714\u2716"
-                   r"\u26A1\u2705\u274C\u26A0\uFE0F\u267B\u2611\u2612]")
+                   r"\u26A1\u2705\u274C\u26A0\uFE0F\u267B\u2611\u2612"
+                   r"\u2B55\u2B1C\u23F0\u231B\u23E9\u2122\u2717\u2718"
+                   r"\u2764\u2757\u2753\u2755\u203C]")
 CIRCLED = re.compile(r"[\u2460-\u24FF\u2776-\u2793]")
 
 
