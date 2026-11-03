@@ -49,11 +49,10 @@ Octave 集群的**静态分发契约权威仓**：协议正典、工具链、悬
 
 | 仓 | 关系 |
 |---|---|
-| `Octave-Full-Wasm` | 宿主：引擎产物（已接入 catalogue，`kind: engine`） |
 | `Octave-Extra-Content` | 内容语义产地；本契约的前作者，现退为上游需求方 |
-| `Octave-Full-Wasm` | 宿主：引擎产物与构建事实（`octave.build.json`）；站点装配 |
+| `Octave-Full-Wasm` | 宿主：引擎产物与构建事实（`octave.build.json`）；站点装配。**已接入 catalogue（`kind: engine`）** |
 | `Octave-UI` | 消费端：包管理器、下载管理 |
-| `OpenModelica-Full-Wasm` | 第二引擎产地 |
+| `OpenModelica-Full-Wasm` | 第二引擎产地。**已接入 catalogue（`kind: engine`）** |
 | `Shirone-personalized` | isui.ren 站侧：反代与边缘（EdgeOne） |
 
 ## 纪律（继承自集群实测教训）

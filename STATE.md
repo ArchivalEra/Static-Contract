@@ -307,6 +307,22 @@
   **同一判据也接进 `verify-channels.py`**（线上验收那步）：原来它等所有通道就绪，
   CF 一挂整条 workflow 就红。现在 owned=false 的通道未就绪只打 `⚠`，
   自证加「归属分流」用例（10 PASS / 0 FAIL）。
+- **第四源接入 + 修 id 尾斜杠 bug（2026-11-03）**：`OpenModelica-Full-Wasm` 已订阅
+  （`kind: "engine"`，与 `Octave-Full-Wasm` 同档 —— `kind` 属内容契约词表，
+  我不扩表）。真实派生 **19 条上架 / 7 条排除**，omc 两条在列：
+  `v0.2.0-wasm32`（AGPL-3.0-or-later）、`msl-4.1.0-maint.om`（BSD-3-Clause）。
+  **验证用零下载**（GitHub 平台 `digest` 逐块对 `chunks[].sha256`），不依赖本地盘核对。
+  **修了一条真 bug**：`verify_entry` 的 `"%s/%s" % (man.get("id") or …, "")` 死代码
+  给 `id` 加了尾斜杠（产生 `OpenModelica-Full-Wasm/v0.2.0-wasm32/`）——
+  omc 是第一个用 `<repo>/<pkg>-<ver>` 带点号短横形状的仓，前三条源没暴露它。
+  **实测踩到的取件坑（已写进回信）**：`gh release download <tag> -p manifest.json`
+  拿到的是旧/缓存版本，内容 sha 与平台 `digest` 不符（`dd938745…` vs `1794718f…`）；
+  正确取法走 assets API octet-stream。G2 就是这么抓到的。
+  **他们提的契约变更通知机制**：四项全采纳，但落地改成**机械可查**（`contract.json`
+  指纹 + `sources.json` 的 `contract_selftest` 期望值），不做"每次定稿发信"——
+  后者靠记性，正是 034 事故的失效模式。`contract.json` 待下次实质改动一并实现。
+  **裁定他们的问题**：`supply-msl` 两份（extra-content 与 omc 各一份）**合法并存** ——
+  `id` 不同即两个 release；协议不做 blob 去重（v4 §2.3 apt 判据）；归属 ≠ 排他。
 - **悬案**：`questions/05`（zstd vs gzip 在 EdgeOne 真链路，各 5 次取中位数）未结。
 - **未决项**：U1 codecs 顺序（= 悬案 05）、U2 chunkSize 按件可配、U3 asset 名 product 前缀、
   U4 接入排期——裁定权在本仓（移交信 §5）。

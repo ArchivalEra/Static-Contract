@@ -219,7 +219,9 @@ def verify_entry(repo, rel, manifest_bytes, assets_by_name, check_runner):
 
     # 通过：条目**不含任何可变内容**（tag 固定的 base + 派生时刻 + manifest 身份）
     return {
-        "id": "%s/%s" % (man.get("id") or "%s/%s" % (repo, tag), ""),
+        # ⚠️ 曾写成 `"%s/%s" % (..., "")` —— 给 id 尾巴加了个多余的 "/"，
+        # 实测产生 `OpenModelica-Full-Wasm/v0.2.0-wasm32/`。manifest.id 本身就是完整 id。
+        "id": str(man.get("id") or ("%s/%s" % (repo, tag))),
         "base": base,
         "manifest_sha256": got,
         "license": lic_out,

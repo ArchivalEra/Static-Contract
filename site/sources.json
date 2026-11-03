@@ -13,6 +13,10 @@
   {
    "repo": "ArchivalEra/Octave-Full-Wasm",
    "kind": "engine"
+  },
+  {
+   "repo": "ArchivalEra/OpenModelica-Full-Wasm",
+   "kind": "engine"
   }
  ]
 }
