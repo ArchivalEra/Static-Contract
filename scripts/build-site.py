@@ -28,6 +28,15 @@ TOOLS = os.path.join(HERE, "tools")
 CATALOGUE_SRC = os.path.join(HERE, "site", "catalogue.json")
 SOURCES_SRC = os.path.join(HERE, "site", "sources.json")
 CHANNELS_SRC = os.path.join(HERE, "site", "channels.json")
+
+# 发布到站点的契约文档：只有现行权威两份。历史契约（v0–v3、v3-absorption-audit）
+# 留在仓库里供追溯，不上站——读者读到已废弃的协议只会误事。
+PUBLISHED_SPECS = (
+    "2026-10-30-release-contract-v4.md",
+    "2026-11-01-release-contract-v1.1-license.md",
+)
+# 产物根层的文件（除 index.html / files.json 由构建器生成）
+PUBLISHED_ROOT = ("LICENSE", "catalogue.json", "sources.json")
 README = os.path.join(HERE, "README.md")
 
 # 开放词表超集：正典 V9 codecs 是开放词表，闸门按超集匹配宁可误拒不漏放
@@ -140,15 +149,16 @@ def build(out):
         d = os.path.join(tmp, "dist")
         os.makedirs(os.path.join(d, "contract"))
         os.makedirs(os.path.join(d, "tools"))
-        for src_dir, dst in ((SPECS, os.path.join(d, "contract")),
-                             (TOOLS, os.path.join(d, "tools"))):
-            for name in _publishable(src_dir, (".md", ".py")):
-                shutil.copy2(os.path.join(src_dir, name), os.path.join(dst, name))
+        # ★ 发布面 = **货架 + 契约**，仅此而已（用户裁定 2026-11-03）。
+        #   读者不维护这个仓，也不关心它怎么被维护的。维护类文档
+        #   （STATE / maintaince / README / incidents / rulings / tools / 历史契约）
+        #   留在仓库里，**不发布**。
+        #   PUBLISHED 是唯一产地：加一个文件必须改这里，H9 会核对产物恰好等于它。
+        for rel in PUBLISHED_SPECS:
+            shutil.copy2(os.path.join(SPECS, rel), os.path.join(d, "contract", rel))
         shutil.copy2(src, os.path.join(d, "catalogue.json"))
-        # 订阅清单随站一起发布：**可审计**（谁决定收哪些仓）
         shutil.copy2(SOURCES_SRC, os.path.join(d, "sources.json"))
-        for fname in ("README.md", "STATE.md", "maintaince.md", "LICENSE"):
-            shutil.copy2(os.path.join(HERE, fname), os.path.join(d, fname))
+        shutil.copy2(os.path.join(HERE, "LICENSE"), os.path.join(d, "LICENSE"))
         # 自证数实测（不手抄）；工具不在就明说未知。
         # ⚠️ 自证模式下不跑自证（build-site --selftest 会调 build() ⇒ 递归爆栈）
         if os.environ.get("SC_BUILD_SELFTEST") == "1":
@@ -343,24 +353,19 @@ pre { font-family:monospace; background:#f4f4f8; border:1px solid #999;
       </ul></div>
     </div>
     <div class="block">
-      <div class="caption">Docs</div>
+      <div class="caption">Contract</div>
       <div class="content"><ul class="menu">
         <li><a href="contract/2026-10-30-release-contract-v4.md">v4 &mdash; V1&ndash;V10</a></li>
         <li><a href="contract/2026-11-01-release-contract-v1.1-license.md">v1.1 &mdash; V11</a></li>
-        <li><a href="#docs">@@NSPECS@@ documents</a></li>
-        <li><a href="#tools">@@NTOOLS@@ tools</a></li>
       </ul></div>
     </div>
     <div class="block">
-      <div class="caption">Repo</div>
+      <div class="caption">Data</div>
       <div class="content"><ul class="menu">
-        <li><a href="README.md">README</a></li>
-        <li><a href="STATE.md">STATE</a></li>
-        <li><a href="maintaince.md">maintaince</a></li>
         <li><a href="catalogue.json">catalogue.json</a></li>
         <li><a href="sources.json">sources.json</a></li>
         <li><a href="LICENSE">LICENSE</a></li>
-        <li><a href="https://github.com/ArchivalEra/Static-Contract">GitHub</a></li>
+        <li><a href="https://github.com/ArchivalEra/Static-Contract">source</a></li>
       </ul></div>
     </div>
   </div>
@@ -398,26 +403,13 @@ pre { font-family:monospace; background:#f4f4f8; border:1px solid #999;
     <div class="block">
       <div class="caption"><a name="docs" style="color:#fff">Contract</a></div>
       <div class="content">
-        <p><b>Authority:</b>
-           <a href="contract/2026-10-30-release-contract-v4.md">v4 &mdash; V1&ndash;V10</a> +
-           <a href="contract/2026-11-01-release-contract-v1.1-license.md">v1.1 &mdash; V11</a>.
-           The rest is history, kept so rejected designs are not re-opened.
+        <p><b>Two documents.</b>
+           <a href="contract/2026-10-30-release-contract-v4.md">v4</a> defines the
+           manifest structure and invariants V1&ndash;V10.
+           <a href="contract/2026-11-01-release-contract-v1.1-license.md">v1.1</a> defines
+           the license field, invariant V11, and <code>schema: 3</code>.
+           Earlier drafts are superseded and are not published here.
            <b>Not declared stable.</b></p>
-        <ul class="doclist">
-@@SPECS@@
-        </ul>
-      </div>
-    </div>
-
-    <div class="block">
-      <div class="caption"><a name="tools" style="color:#fff">Tools</a></div>
-      <div class="content">
-        <p class="m">generator <code>@@CNT_GEN@@</code> &middot; checker
-           <code>@@CNT_CHK@@</code> &middot; builder <code>@@CNT_BUILD@@</code> &middot;
-           deriver <code>@@CNT_CAT@@</code> (measured, not hand-copied)</p>
-        <ul class="doclist">
-@@TOOLS@@
-        </ul>
       </div>
     </div>
 
@@ -461,10 +453,7 @@ check bytes + sha256 &rarr; decode &rarr; concat &rarr; check entry.sha256</pre>
 </body>
 </html>
 """.replace("@@ROWS@@", rows).replace("@@EXROWS@@", ex_rows) \
-   .replace("@@SPECS@@", _links(specs, "contract")) \
-   .replace("@@TOOLS@@", _links(tools, "tools")) \
    .replace("@@NREL@@", str(n_rel)).replace("@@NEXC@@", str(n_exc)) \
-   .replace("@@NSPECS@@", str(len(specs))).replace("@@NTOOLS@@", str(len(tools))) \
    .replace("@@CNT_GEN@@", _cnt("gen")) \
    .replace("@@CNT_CHK@@", _cnt("chk")) \
    .replace("@@CNT_BUILD@@", _cnt("build")) \
@@ -526,10 +515,9 @@ def selftest():
             for root, _dirs, files in os.walk(os.path.join(d, "dist")):
                 for n in files:
                     names.add(os.path.relpath(os.path.join(root, n), os.path.join(d, "dist")))
-            need = {"index.html", "catalogue.json", "README.md",
-                    "STATE.md", "maintaince.md", "LICENSE", "sources.json",
+            need = {"index.html", "catalogue.json", "LICENSE", "sources.json",
                     "contract/2026-10-30-release-contract-v4.md",
-                    "tools/make-manifest-v4.py", "tools/check-release-v4.py"}
+                    "contract/2026-11-01-release-contract-v1.1-license.md"}
             return need <= names and all(not ASSET_SHAPE.search(n) for n in names)
         finally:
             shutil.rmtree(d, ignore_errors=True)

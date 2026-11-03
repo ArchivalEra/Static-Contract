@@ -102,6 +102,42 @@ EMOJI = re.compile(r"[\U0001F300-\U0001FAFF\u2600-\u27BF\u2B50\u2714\u2716"
 CIRCLED = re.compile(r"[\u2460-\u24FF\u2776-\u2793]")
 
 
+# 发布面白名单（用户裁定 2026-11-03）：站点只出货架与契约。
+# 维护类文档（STATE / maintaince / README / incidents / rulings / tools / 历史契约）
+# 留在仓库里，**不发布** —— 读者不维护这个仓。
+EXPECTED_ARTIFACT = {
+    "index.html",           # 生成的货架页
+    "files.json",           # 生成的产物清单（镜像方照抄）
+    "catalogue.json",       # 货架本体
+    "sources.json",         # 货架覆盖哪些仓
+    "LICENSE",              # 本站自身许可
+    "contract/2026-10-30-release-contract-v4.md",
+    "contract/2026-11-01-release-contract-v1.1-license.md",
+}
+
+
+def check_publish_surface(dist_dir):
+    """H9：产物必须**恰好**等于白名单。
+
+    这是本仓最重要的一条站点判据。用户原话（2026-11-03）：
+    「读者需要知道仓库内的事情吗……只需要放出来货架长啥样以及契约啥样就行了」。
+
+    多一个文件 ⇒ 红（发布面在扩散）。少一个 ⇒ 红（货架或缺契约）。
+    """
+    actual = set()
+    for root, _dirs, files in os.walk(dist_dir):
+        for f in files:
+            actual.add(os.path.relpath(os.path.join(root, f), dist_dir).replace(os.sep, "/"))
+    extra = sorted(actual - EXPECTED_ARTIFACT)
+    missing = sorted(EXPECTED_ARTIFACT - actual)
+    probs = []
+    if extra:
+        probs.append("H9 发布了不该发布的文件: %s" % ", ".join(extra[:8]))
+    if missing:
+        probs.append("H9 缺少必需文件: %s" % ", ".join(missing))
+    return probs
+
+
 def check_published_md(dist_dir):
     """H8：产物里的 .md 不得含 CJK / emoji / 圈号。
 
@@ -402,7 +438,11 @@ def main():
             print("H5：检查了 %d 个产物内相对链接" % n_links)
             h8 = check_published_md(dist_dir)
             probs += h8
-            print("H8 发布 md 语言检查: %s" % ("全部英文" if not h8 else "%d 个文件不合格" % len(h8)))
+            h9 = check_publish_surface(dist_dir)
+            probs += h9
+            print("H8 发布 md 语言: %s | H9 发布面: %s"
+                  % ("全部英文" if not h8 else "%d 个不合格" % len(h8),
+                     "恰好是货架+契约" if not h9 else "越界"))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
