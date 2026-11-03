@@ -19,6 +19,9 @@
 # ===== 契约正典与工具链（2026-11-01 自 extra-content 移交落库）=====
 !/specs/
 !/specs/*.md
+# 中文原版归档（不发布到站点，只留可读历史）
+!/specs/zh-archive/
+!/specs/zh-archive/*.md
 !/tools/
 !/tools/*.py
 !/questions/
@@ -27,6 +30,11 @@
 !/site/*.json
 # 构建产物只进 deploy 分支，不进 main
 /site/dist/
+
+# ===== 历史文档（2026-11-03）：事故编年史 / 裁定原文 =====
+# 白名单模式下不显式放行就不进 git（同上踩过的坑）
+!/docs/
+!/docs/*.md
 
 # ===== 部署自动更新链（2026-11-01）=====
 !/.github/

@@ -1,189 +1,195 @@
-# 发布契约 v3 的收纳审计（内容契约 / 引擎契约）
+# Absorption audit for release contract v3 (content contract / engine contract)
 
-> ## ⛔ DEPRECATED — 历史文档，不是权威（2026-11-02 标注）
+> ## DEPRECATED — historical, not authoritative (marked 2026-11-02)
 >
-> 本文**从未投递、从未进任何 schema、从未推广**，已被后续版本取代。
-> **现行权威 = `specs/2026-10-30-release-contract-v4.md`（V1–V10 基础条款）
-> + `specs/2026-11-01-release-contract-v1.1-license.md`（V11 许可，schema 3）**。
-> 保留本文的唯一理由是**被否方案的判据**（防止将来重开）——不要照它实现。
+> Superseded. Current authority: v4 (V1–V10) plus v1.1 (V11, schema 3).
+> Kept for rejection criteria only.
+>
+> This document was **never delivered, never entered any schema, never promoted**. It has been superseded.
+> The authority paths are `specs/2026-10-30-release-contract-v4.md` (V1–V10 base clauses)
+> and `specs/2026-11-01-release-contract-v1.1-license.md` (V11 license, schema 3).
+> The only reason to keep this document is as **the criteria of a rejected design** (to prevent reopening it later) — do not implement against it.
 
-> **目的**：回答一个问题——**发布契约 v3 到底能不能收纳现有的内容契约与引擎契约？**
-> **方法**：拿两个契约的**全部实字段**（不是摘要）逐字段判定归属。
-> **结论先放**：**部分收纳，不能整体收纳。** 下面给出分界线与不可收纳项的理由。
+> **Purpose**: answer one question — **can release contract v3 actually absorb the existing content contract and engine contract?**
+> **Method**: take **every real field** of both contracts (not summaries) and judge ownership field by field.
+> **Conclusion up front**: **partial absorption; whole-contract absorption is not possible.** The dividing line and the reasons for the non-absorbable items follow.
 >
-> **这份文件是对「草率发信」的补救**：我在 `119`/`120` 里让 OM 按 v3 造 release，
-> 但没有先证明 v3 与既有契约的映射成立。现在补上。
+> **This file is the remedy for a hasty mailing**: in `119`/`120` I had OM build a release per v3
+> without first proving that the mapping between v3 and the existing contracts holds. This fills that gap.
 
 ---
 
-## 0. 一句话结论
+## 0. One-sentence conclusion
 
-| 契约 | 能否被 v3 收纳 | 判定 |
+| Contract | Can v3 absorb it | Verdict |
 |---|---|---|
-| **内容契约**（`content-list`，entry 23 字段） | **部分** —— 只有「字节身份」那 5 个字段能被 v3 接管，其余 18 个属于**语义域**，v3 不该也不能接管 | ⚠️ 分层共存 |
-| **引擎契约**（`octave.build.json`，9 个顶层键） | **不能** —— 它记的是**构建过程**（declared/measured/verdict/mismatches），v3 只关心**发布产物** | ❌ 完全正交 |
+| **Content contract** (`content-list`, entry with 23 fields) | **Partially** — only the 5 fields of "byte identity" can be taken over by v3; the remaining 18 belong to the **semantic domain**, which v3 should not and cannot take over | Layered coexistence |
+| **Engine contract** (`octave.build.json`, 9 top-level keys) | **No** — it records the **build process** (declared/measured/verdict/mismatches), while v3 cares only about the **released artifacts** | Fully orthogonal |
 
-**⇒ v3 的定位必须收窄为「一个 release 内字节对象的身份与取法」，它既不是内容契约的替代，也不是引擎契约的替代。**
+**⇒ v3's positioning must narrow to "the identity and acquisition method of byte objects within one release"; it is neither a replacement for the content contract nor a replacement for the engine contract.**
 
 ---
 
-## 1. 内容契约：23 个 entry 字段逐字段判定
+## 1. Content contract: field-by-field judgment over all 23 entry fields
 
-取自宿主产地 `build/extra-content/content-list.schema.json` 的 `$defs.entry`
-（`required = [name, version, sha256, url]`）。
+Taken from the host producer's `build/extra-content/content-list.schema.json`, `$defs.entry`
+(`required = [name, version, sha256, url]`).
 
-### 1.1 ✅ 可被 v3 接管（5 个）—— 字节身份域
+### 1.1 Can be taken over by v3 (5) — byte identity domain
 
-| 字段 | v3 里变成什么 | 说明 |
+| Field | What it becomes in v3 | Note |
 |---|---|---|
-| `sha256` | `manifest.assets[].sha256`（原始字节） | 同一语义：fail-closed 唯一依据 |
-| `url` | **`chunks[].file`（纯 asset 名）+ 分发方 base URL** | v3 把「一个 url」拆成「N 个纯文件名 + 一个 base」 |
-| `size` | `manifest.assets[].bytes` | 同语义，但 v3 是**必填**（原契约是可选，仅进度条用） |
-| `files`（`form:"tree"` 专属的下载闭包 map） | `manifest.variants[].chunks[]` 的 `{file,bytes,sha256}` | **语义直接对应**：都是「消费者会下载的文件 → 逐件 bytes+sha」 |
-| `upstream_url` | `manifest.assets[].upstreamUrl`（可选，记账） | 同语义：出处，不参与运行期 |
+| `sha256` | `manifest.assets[].sha256` (raw bytes) | Same semantics: the sole fail-closed basis |
+| `url` | **`chunks[].file` (bare asset name) + distributor base URL** | v3 splits "one url" into "N bare filenames + one base" |
+| `size` | `manifest.assets[].bytes` | Same semantics, but v3 makes it **required** (optional in the original contract, used only for progress bars) |
+| `files` (download closure map, exclusive to `form:"tree"`) | `{file,bytes,sha256}` entries of `manifest.variants[].chunks[]` | **Semantics map directly**: both mean "the files a consumer will download → per-file bytes+sha" |
+| `upstream_url` | `manifest.assets[].upstreamUrl` (optional, bookkeeping) | Same semantics: provenance, not involved at runtime |
 
-**判据**：这 5 个字段删掉后，v3 会缺信息 ⇒ v3 必须接管它们。
+**Criterion**: deleting these 5 fields would leave v3 missing information ⇒ v3 must take them over.
 
-### 1.2 ⚠️ 不该被 v3 接管（15 个）—— 语义域，留在内容契约
+### 1.2 Should not be taken over by v3 (15) — semantic domain, stays in the content contract
 
-| 字段 | 为什么 v3 不该管 |
+| Field | Why v3 should not govern it |
 |---|---|
-| `name` | 包的**身份/键**（`deps` 指它）。v3 的 asset 名是**文件名**，不是包名 |
-| `version` | **版本语义**（`versions[]` 三不变量）。v3 的 tag 是发布批次，不是包的版本 |
-| `form` | 投送形态（pkg/tree/file/oct/octdir/js）—— **内容构成轴**，与字节身份无关 |
-| `content` / `kinds` | 包里有什么源（m/src/oct）—— 纯语义 |
-| `arch` | 目标架构（dlopen 兼容性）—— 语义，不是字节事实 |
-| `deps` | **依赖边**（包→包 / 包→能力层）—— v3 无从得知 |
-| `requires` | 平台/版本约束串 —— 语义 |
-| `license` | 许可台账 —— 语义（v3 可以带一份副本记账，但**权威在内容契约**） |
-| `note` | 人话备注 —— 语义 |
-| `description` | 包级描述（UI 卡片首屏）—— 语义 |
-| `links` | 文档链接 —— 语义 |
-| `consumer` | 消费面（octave/omc 车道轴）—— **引擎车道语义**，v3 无关 |
-| `kind` | 条目性质（src/pre/engine）—— 语义 |
-| `role` | 消费角色（package/toolchain/language-bridge）—— 语义 |
-| `versions[]` | 版本候选集（三不变量）—— 语义 |
+| `name` | The package's **identity/key** (`deps` refer to it). v3's asset name is a **filename**, not a package name |
+| `version` | **Version semantics** (`versions[]` three invariants). v3's tag is a release batch, not the package version |
+| `form` | Delivery form (pkg/tree/file/oct/octdir/js) — a **content composition axis**, unrelated to byte identity |
+| `content` / `kinds` | Which source kinds the package contains (m/src/oct) — pure semantics |
+| `arch` | Target architecture (dlopen compatibility) — semantics, not a byte fact |
+| `deps` | **Dependency edges** (package→package / package→capability layer) — v3 has no way to know them |
+| `requires` | Platform/version constraint string — semantics |
+| `license` | License ledger — semantics (v3 may carry a copy for bookkeeping, but **authority lies with the content contract**) |
+| `note` | Human-readable remark — semantics |
+| `description` | Package-level description (UI card first screen) — semantics |
+| `links` | Documentation links — semantics |
+| `consumer` | Consumption surface (octave/omc lane axis) — **engine lane semantics**, irrelevant to v3 |
+| `kind` | Entry nature (`src` / `pre` / `engine`) — semantic |
+| `role` | Consumption role (package/toolchain/language-bridge) — semantics |
+| `versions[]` | Version candidate set (three invariants) — semantics |
 
-**判据（deletion test 反向）**：把这 15 个塞进 v3，会让 v3 的 manifest 变成**第二份内容契约**
-⇒ 两处漂移（我们为 `sha256` 两处写漂移打过官司，见 `versions[]` 不变量②）。
+**Criterion (deletion test, reversed)**: stuffing these 15 into v3 would turn v3's manifest into **a second content contract**
+⇒ drift in two places (we have already litigated a `sha256` drift in two places; see `versions[]` invariant 2).
 
-### 1.3 ❓ 需要裁定的（3 个）
+### 1.3 Needs adjudication (3)
 
-| 字段 | 问题 | 我的倾向 |
+| Field | Question | My inclination |
 |---|---|---|
-| `artifacts` | 预编译 `.oct` 的逐架构发布单位。**它本身就是「一个发布物」**，与 v3 的 release 概念重叠 | **倾向**：`artifacts` 每个条目**指向一个 release**（`releaseRef`），而不是被 v3 吸收。即内容契约记「有哪些 artifact」，v3 记「那个 release 里的字节身份」 |
-| `optional_keys` | 协商机制（消费者声明能忽略哪些键） | **倾向**：留在内容契约。v3 的 `variants` 前向兼容靠「未知 codec 跳过」，是**另一套机制**，不需要 `optional_keys` |
-| `producer` | 生产者身份（id + pin） | **倾向**：v3 已有 `id`（`<repo>/<tag>`）+ 可选 `producer.commit`，**部分重叠**。需要裁定是否统一 |
+| `artifacts` | The per-architecture release unit for prebuilt `.oct` files. **It is itself "a release artifact"**, overlapping v3's release concept | **Inclination**: each `artifacts` entry **points at a release** (`releaseRef`) instead of being absorbed by v3. That is, the content contract records "which artifacts exist", and v3 records "the byte identity inside that release" |
+| `optional_keys` | Negotiation mechanism (consumers declare which keys they can ignore) | **Inclination**: keep it in the content contract. v3's `variants` forward compatibility relies on "skip unknown codec", which is **a different mechanism**, and does not need `optional_keys` |
+| `producer` | Producer identity (id + pin) | **Inclination**: v3 already has `id` (`<repo>/<tag>`) plus optional `producer.commit`, so there is **partial overlap**. Whether to unify them needs adjudication |
 
 ---
 
-## 2. 引擎契约：9 个顶层键，**完全不能被 v3 收纳**
+## 2. Engine contract: 9 top-level keys, **cannot be absorbed by v3 at all**
 
-`octave.build.json`（宿主 `site/octave.build.json`）实测字段：
+`octave.build.json` (host `site/octave.build.json`), measured fields:
 
 ```
 schema / tool / build / declared / measured / inputs / notes / verdict / mismatches / checked
 ```
 
-| 键 | 记什么 | 与 v3 的关系 |
+| Key | What it records | Relationship to v3 |
 |---|---|---|
-| `schema` | 该契约自己的版本 | 无关 |
-| `tool` | 用什么工具构建（emsdk/clang 版本） | **构建过程事实**，v3 不管 |
-| `build` | 构建参数（flags/配置） | 同上 |
-| `declared` | **声称**的产物（人写） | 同上 |
-| `measured` | **实测**的产物（工具量） | 同上 |
-| `inputs` | 输入（源码 commit / 依赖） | 同上 |
-| `notes` | 备注 | 同上 |
-| **`verdict`** | **对账结论**（ok/mismatch） | 同上 |
-| **`mismatches`** | 具体哪些项不符 | 同上 |
-| `checked` | 检查时间戳/元数据 | 同上 |
+| `schema` | The version of this contract itself | Irrelevant |
+| `tool` | Which tools were used to build (emsdk/clang versions) | **Build process fact**, not v3's concern |
+| `build` | Build parameters (flags/configuration) | Same as above |
+| `declared` | **Declared** artifacts (written by humans) | Same as above |
+| `measured` | **Measured** artifacts (measured by tools) | Same as above |
+| `inputs` | Inputs (source commit / dependencies) | Same as above |
+| `notes` | Remarks | Same as above |
+| **`verdict`** | **Reconciliation conclusion** (ok/mismatch) | Same as above |
+| **`mismatches`** | Which specific items do not match | Same as above |
+| `checked` | Check timestamp/metadata | Same as above |
 
-**⇒ 引擎契约的全部内容都是「这个字节是怎么造出来的、造得对不对」，v3 的全部内容是「这个字节发布后是什么身份、怎么取」。两者零重叠。**
+**⇒ Everything in the engine contract is "how was this byte made, and was it made correctly", while everything in v3 is "after release, what identity does this byte have and how is it fetched". The two have zero overlap.**
 
-**唯一的接触点**：引擎契约的 `measured.files` 里逐件的 `sha256` **就是** v3 `manifest.assets[].sha256` 的**产地**。
-所以正确关系是：
+**The only point of contact**: the per-file `sha256` inside the engine contract's `measured.files` **is** the **origin** of v3's `manifest.assets[].sha256`.
+So the correct relationship is:
 
 ```
-引擎契约（构建事实 + measured 逐件 sha）
-        ↓ 产地（provider，不复制）
-发布契约 v3（manifest：发布后的字节身份与分块取法）
-        ↓ 消费
-分发方（Shirone static 站）/ 消费端（UI/宿主）
+Engine contract (build facts + per-file measured sha)
+        ↓ origin (provider, no copying)
+Release contract v3 (manifest: post-release byte identity and chunk acquisition)
+        ↓ consumption
+Distributor (Shirone static site) / consumer (UI/host)
 ```
 
-**v3 不得自己算 sha 当权威**——这与「逐件 sha 唯一产地 = 生产者台账，分发方只核对不另算」
-是同一条纪律（`files[]` 五条绑定第③条）。
+**v3 must not compute sha itself and treat it as authoritative** — this is the same discipline as "the sole origin of per-file sha = the producer's ledger; the distributor only checks and never recomputes"
+(binding rule 3 of the five `files[]` bindings).
 
 ---
 
-## 3. 结论：v3 的正确位置
+## 3. Conclusion: the correct position of v3
 
 ```
-┌──────────────────────────────────────────────┐
-│ 内容契约（content-list）                       │
-│   版本语义 / form / content / consumer / deps  │
-│   / license / description / versions[]        │
-│   —— 回答「有什么、能不能用、给谁用」           │
-└────────────────┬─────────────────────────────┘
-                 │ 引用（acquisition.releaseRef，**尚未加**）
-┌────────────────▼─────────────────────────────┐
-│ 发布契约 v3（manifest）                        │
-│   一个 release 内：字节身份 + 分块 + 回退链      │
-│   —— 回答「这个字节从哪取、分几块、怎么校验」    │
-└────────────────▲─────────────────────────────┘
-                 │ 产地（提供 measured.files 的 sha，不复制）
-┌────────────────┴─────────────────────────────┐
-│ 引擎契约（octave.build.json）                  │
-│   tool / build / declared / measured / verdict │
-│   —— 回答「这个字节是怎么造的、造得对不对」      │
-└──────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────┐
+│ Content contract (content-list)                               │
+│   version semantics / form / content / consumer / deps        │
+│   / license / description / versions[]                        │
+│   - answers "what exists, can it be used, and by whom"        │
+└───────────────────────────────┬───────────────────────────────┘
+                                │ reference (acquisition.releaseRef, not yet added)
+                                ↓
+┌───────────────────────────────┴───────────────────────────────┐
+│ Release contract v3 (manifest)                                │
+│   within one release: byte identity + chunks + fallback chain │
+│   - answers "where to fetch this byte, in how many chunks,    │
+│     and how to verify it"                                     │
+└───────────────────────────────┬───────────────────────────────┘
+                                │ origin (supplies measured.files sha, not copied)
+                                ↑
+┌───────────────────────────────┴───────────────────────────────┐
+│ Engine contract (octave.build.json)                           │
+│   tool / build / declared / measured / verdict                │
+│   - answers "how was this byte produced, is it correct"       │
+└───────────────────────────────────────────────────────────────┘
 ```
 
-**三层各答一个问题，v3 在中间，只碰字节身份。**
+**Three layers each answer one question; v3 sits in the middle and touches only byte identity.**
 
 ---
 
-## 4. 对已发信件的影响（必须更正的部分）
+## 4. Impact on already-sent letters (the part that must be corrected)
 
-我在 `119`（给 OM）和 `120`（给 Shirone）里说「契约 v3」时，**没有说清它不替代内容契约**。
-这不是致命错误（OM 的试点确实只需要 v3 那部分），但**措辞会让它们误以为 v3 是内容契约的升级版**。
+When I said "contract v3" in `119` (to OM) and `120` (to Shirone), **I did not make clear that it does not replace the content contract**.
+This is not a fatal error (OM's pilot genuinely needs only the v3 portion), but **the wording would let them mistakenly believe v3 is an upgraded version of the content contract**.
 
-**要补的更正**：
-1. **给 OM**：试点 release 只产 v3 的 manifest；**不碰**你现有的 `content-list.json`
-   ——两者并存，试点成功后由我出 `acquisition.releaseRef` 把它们连起来（落地顺序第 6 步）；
-2. **给 Shirone**：static 站只服务 v3 的 manifest 与分片，**它不解析 content-list**
-   ——内容语义在另一边，别混；
-3. **给 UI/宿主**：将来消费时是「先读 content-list 选包 → 再看该包的 releaseRef → 读
-   v3 manifest 取字节」，**两跳**，不是一跳。
+**Corrections to be issued**:
+1. **To OM**: the pilot release produces only the v3 manifest; **do not touch** your existing `content-list.json`
+   — the two coexist, and after the pilot succeeds I will issue `acquisition.releaseRef` to connect them (rollout order, step 6);
+2. **To Shirone**: the static site serves only the v3 manifest and chunks, and **it does not parse content-list**
+   — content semantics live on the other side; do not mix them;
+3. **To UI/host**: future consumption is "first read content-list to choose a package → then look at that package's releaseRef → read
+   the v3 manifest to fetch bytes", **two hops**, not one.
 
 ---
 
-## 5. 三个必须裁定的问题（我不擅自定）
+## 5. Three questions that must be adjudicated (I will not decide them unilaterally)
 
-| # | 问题 | 我的倾向 | 判据 |
+| # | Question | My inclination | Criterion |
 |---|---|---|---|
-| **U-A** | `artifacts`（预编译件）与 v3 release 的关系 | 内容契约记「有哪些 artifact 的 releaseRef」，v3 记字节 | 两者都是发布单位，但一个是**语义选择**、一个是**字节身份** |
-| **U-B** | `producer` 是否统一（内容契约的 `{id,pin}` vs v3 的 `id` + `producer.commit`） | 统一到 v3 形状 `{repo, commit}`；内容契约的 `pin` 语义（submodule/release）保留在内容契约 | 避免两处各写一份 |
-| **U-C** | **一个 release 能否承载多个 asset**？ | **能**（v3 目前只实现单资产；`assets` 应改成 map 而非单对象） | 现实：OM 的 `v0.1.0-wasm32` 已有 **2 个** asset（wasm + MSL zip）；v3 现在只能描述一个 |
+| **U-A** | The relationship between `artifacts` (prebuilt files) and v3 releases | The content contract records "which artifact releaseRefs exist"; v3 records bytes | Both are release units, but one is a **semantic choice** and the other is **byte identity** |
+| **U-B** | Whether `producer` is unified (content contract's `{id,pin}` vs v3's `id` + `producer.commit`) | Unify to the v3 shape `{repo, commit}`; the content contract's `pin` semantics (submodule/release) stay in the content contract | Avoid writing the same thing in two places |
+| **U-C** | **Can one release carry multiple assets?** | **Yes** (v3 currently implements only single-asset; `assets` should become a map rather than a single object) | Reality: OM's `v0.1.0-wasm32` already has **2** assets (wasm + MSL zip); v3 today can describe only one |
 
-**U-C 是个真缺口**：我的生成器只处理「单个主资产」，而 OM 的 release 里有多件。
-**试点如果只做 wasm 一件，是可以的**（MSL zip 19.5MB 也可以分片，但不属于第一步）。
-**但契约本身应该支持多资产**——这条必须在 OM 动手前定，否则它会造出一个只覆盖一件的 manifest。
+**U-C is a real gap**: my generator handles only "a single primary asset", while OM's release contains several.
+**If the pilot does only the wasm artifact, that is acceptable** (the 19.5MB MSL zip could be chunked too, but that is not part of the first step).
+**But the contract itself should support multiple assets** — this must be settled before OM starts, otherwise it will produce a manifest covering only one artifact.
 
 ---
 
-## 6. 诚实边界
+## 6. Honest boundaries
 
-- 本审计基于**两个契约的 schema / 实件**（读 JSON，不是读文档），字段名与数量可复跑；
-- 我**没有**验证「内容契约的消费端（UI 包管理器）能否接受两跳读取」——那是 UI 的事，
-  且属于落地顺序第 5、6 步；
-- 我**没有**验证「引擎契约的 `measured.files` 与 v3 `chunks` 的逐件 sha 是否天然一致」
-  ——那需要拿一个真实的 `octave.build.json` 与 v3 manifest 对比，尚未做。
+- This audit is based on the **schemas / real artifacts of the two contracts** (reading JSON, not reading documents); field names and counts are re-runnable;
+- I have **not** verified "whether the content contract's consumer (the UI package manager) can accept a two-hop read" — that is the UI's business,
+  and it belongs to rollout order steps 5 and 6;
+- I have **not** verified "whether the per-file sha in the engine contract's `measured.files` is naturally consistent with v3's `chunks`"
+  — that would require comparing a real `octave.build.json` against a v3 manifest, which has not been done yet.
 
-## 7. 复跑方式
+## 7. How to rerun
 
 ```bash
-# 内容契约的 entry 全字段（23 个）
+# All entry fields of the content contract (23)
 python3 -c "
 import json
 s=json.load(open('/mnt/hdd/zcode-projects/Octave-Full-Wasm/build/extra-content/content-list.schema.json'))
@@ -191,7 +197,7 @@ e=s['\$defs']['entry']
 print('required:', e.get('required'))
 for k in e['properties']: print(' ', k)"
 
-# 引擎契约的全键（9 个）
+# All top-level keys of the engine contract (9)
 python3 -c "
 import json
 d=json.load(open('/mnt/hdd/zcode-projects/Octave-Full-Wasm/site/octave.build.json'))

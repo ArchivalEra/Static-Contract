@@ -1,339 +1,101 @@
-# 活状态（Static-Contract）
+# Live State (Static-Contract)
 
-这个文件是**活状态文档**（Einfacht 生态格式）：正文只写「现在是什么」，
-数字一律引用台账键（`[[键名]]`，不手抄），每条「现在如此」的断言**旁边带复跑方式**
-（纪律 2 —— 写不出复跑方式的句子只能当历史读）。
-台账自动化**已接线**（2026-11-01）：平台 `zreflect/`（自 `vendor/Einfacht` `6e4e6e8`），
-数据层 `zreflect/measure_static_contract.py`，旋钮载体 `reflect-hooks/Einfacht.env`；
-文末机器块由 `python3 zreflect/facts.py --render-doc` 渲染，**不要手改**。
-线上事实（deploy 分支状态等）不进台账——要引用就在正文写命令，不写数。
+This file answers one question: **what is true now**. Not what happened, not why.
+Incident history lives in `docs/incidents.md`; user rulings in `docs/rulings.md`.
+Numbers are never typed here — they are `[[...]]` references into the fact ledger.
 
-## 角色（用户裁定 2026-11-01）
+## Role
 
-**本仓只是契约维护者；站点不收录任何 release 件（0 字节托管）。
-所有的包，要么去 GitHub 拿（release 直链），要么走反代。**
-（用户原话：「记住最最核心的，你只是契约维护者，所有的包，要么去github拿，要么走反代，
-你需要出一个不收录任何release件的站」。）
+**This repository maintains the contract. It hosts zero bytes of any release.**
+Every package comes either from GitHub (release direct link) or through a reverse
+proxy. The site publishes metadata and contract documents only.
 
-这条裁定**已做成构建闸门而非纪律**：`scripts/build-site.py` 产物扫描命中 asset 形状
-（`*.<codec>.<NNN>`）或 `releases/` 路径 ⇒ 构建失败清场，并挂进 commit 相位
-（`zreflect/check_site_build.py`，pre-commit / CI 每次真跑）。
-复跑：`python3 scripts/build-site.py --selftest` ⇒ [[site_build_selftest_pass]] PASS / 0 fail。
+Ruling text: `docs/rulings.md` R-001.
 
-## 现在是什么
+## Canon
 
-- **正典**：`specs/2026-10-30-release-contract-v4.md`（契约名 v1，manifest `schema: 2`）。
-  自 `Octave-Extra-Content` HEAD `9186463` 逐字落库（2026-11-01；拷贝前验过来源三目录 git 干净）。
-  v0–v3 与收纳审计是演化史，被否方案判据在正典 §8。**未试点，不宣布稳定。**
-- **工具链在库**（落库即实测，2026-11-01。复跑：
-  `python3 tools/make-manifest-v4.py --selftest && python3 tools/check-release-v4.py --selftest`）：
-  生成器 [[tool_manifest_selftest_pass]] PASS / 0 fail，
-  校验器 [[tool_check_release_selftest_pass]] PASS / 0 fail（V1–V10 fail-closed）。
-  （移交信所载 `40/25` 是信写完后的旧数字，以本仓实测为准——工具在移交后更新过一轮。）
-- **站点**：元数据站。产物 = `index.html` + `catalogue.json` + `sources.json` +
-  `contract/*.md` + `tools/*.py` + `README.md` + `STATE.md` + `maintaince.md`，
-  **无任何 release 件**。
-  构建复跑：`python3 scripts/build-site.py --out site/dist`（确定性构建，两次逐字节一致，自证覆盖）。
-- **catalogue（严格派生，2026-11-01 裁定）**——用户裁定原话：「最后做一下 catalogue 的
-  严格校验，不允许有坏的流到客户端，足够了，根本不需要客户端错误排查的事情，
-  只要坏的从未上架过」+「严格拒绝，我叫LLVM重新发了」。
-  ⇒ catalogue 是**派生产物**（`scripts/sync-catalogue.py`）：不手改、条目不落 git；
-  订阅清单 `site/sources.json` 只记仓名（加仓是显式决定）。
-  六道闸 G1–G6：有 manifest 且平台给 digest / manifest 内容 sha == 平台 digest /
-  V1–V10 全过 / **每个 chunk 的 sha256 == 该 asset 的平台 digest**（零下载验字节 ——
-  GitHub asset API 实测 `107/107` 带 digest）/ schema 必须 2 / **无孤儿 asset**。
-  失败处置：单条不过 ⇒ 不进 array 并记 `excluded`（照样发布，可审计）；
-  **source 取数失败 ⇒ 整步红、部署中止、三通道停在上次好结果**（绝不发空目录）。
-  实测（2026-11-01 dry-run）：15 条上架 / 6 条排除 —— LLVM `v0.1.0`–`v0.1.4` 被 G5
-  （schema 1）挡、`v0.1.5` 被 G6（孤儿 `llvm-wasm-bundle-v0.1.5.tar.gz`）挡；
-  用户裁定**硬拒**并令 LLVM 重发。复跑：`python3 scripts/sync-catalogue.py --dry-run`、
-  `--selftest`（12 PASS / 0 FAIL）。
-  闸门入册：`zreflect/check_catalogue.py`（派生器自证 + 兜底源必须空 + 订阅清单非空）。
-- **部署链（三通道并行，一份产物）**——用户裁定 2026-11-01：「pages + cf pages + edgeone
-  三条并行且只需要出一份产物就能三地部署」。push main → `sync-deploy` workflow
-  （构建器自证 + 构建 + 0 字节闸门）→ **同一份 `site/dist`** 走两条腿：
-  ① orphan 单提交强推 `deploy` 分支（CF Pages / EdgeOne Pages 监听，**待接入**）；
-  ② `actions/deploy-pages` 正面部署 GitHub Pages（2026-11-01 实测启用，
-  `https://archivalera.github.io/Static-Contract/`，`build_type=workflow`，复跑：
-  `gh api repos/ArchivalEra/Static-Contract/pages --jq .html_url`）。
-  站点全相对链接，子路径托管无害。实测：run `41263566662` success（首跑，2026-11-01），
-  复跑 `gh run list --workflow sync-deploy --repo ArchivalEra/Static-Contract`。
-  **三通道现状（2026-11-01 全部上线，shirone `mail/read/003` 侧建 + 我复跑）**：
-  GitHub Pages `https://archivalera.github.io/Static-Contract/`；
-  Cloudflare `https://static.mango-mesa.ccwu.cc/`（Worker 根路径，2026-11-02 从 `/static/*` 迁移）；
-  EdgeOne `https://isui.ren/static/`（heart 中间件反代 CF Worker，国内路径）。
-  我侧复跑（2026-11-01）：EdgeOne 通道 catalogue 哈希 `3fffe32ee34975a441aee0a357f10e9d`
-  与 Pages 一致、ETag 条件请求 `304` ✓；CF 通道**从本机 000**（TLS 在 CF 边缘被重置，
-  本网络出口问题，连既有路由 `/assistant.user.js` 同样 000 —— 非部署缺陷；
-  shirone 侧三通道同哈希实测在原信 §3.1，复跑见原信）。
-  头语义（shirone 侧配置，见原信 §2）：精确 Content-Type / ETag=sha256 前 32 位 /
-  条件请求 `304` / `Cache-Control: max-age=300`（刻意不用 immutable —— 站内文档原地更新）。
-  **✅ 通道缺陷已闭合（2026-11-01）**：EdgeOne 曾反代 CF 的 Worker 内联快照，
-  不跟 deploy 分支（实测停在两轮之前：EO 空 catalogue + `2095` B 旧 index，
-  而 deploy/Pages 已 16 条）。shirone 改为三条线**独立部署**（`mail/006`）：
-  CF 运行期回源 raw deploy 分支、EO 由 CI 取 deploy 分支落到 EdgeOne Makers 静态树。
-  我方复跑：三通道指纹 `835cb32f9a64fa4a` 与 catalogue sha `5b0229caf72f7787`
-  均等于 deploy 分支；EO 的 `cf-ray|nel|report-to` 计数 0（真独立）。
-  **`deploy` 分支是唯一制品、也是消费方正确入口**——`build-site.py` 需要已派生的
-  catalogue，单独跑只会走空兜底（这是设计，不是缺陷）。
-  最后一环（2026-11-01 补）：EO 静态树由 shirone 的 `deploy.yml` 从我仓 deploy 分支取，
-  **我推 deploy 不会自动触发他们跑** —— 实测我推完新产物后 EO 仍停在上一次。
-  `sync-deploy` 因此在验收前正面 `workflow_dispatch` 他们的 deploy workflow
-  （实测 workflow id 可达、dispatch 成功、EO 跟到同一个指纹 `6b9e1f5600bc23c0`）。
-  未配 `HEART_DISPATCH_TOKEN` 时该步**明说跳过**（不让验收替没发生的动作背锅），
-  此时 EO 注定不跟、验收闸门红是如实报告而非误报。
+| Document | Covers | Status |
+|---|---|---|
+| `specs/2026-10-30-release-contract-v4.md` | V1–V10, manifest structure | Authority for invariants; `schema: 2` clause superseded |
+| `specs/2026-11-01-release-contract-v1.1-license.md` | V11, `schema: 3` | Authority for license |
 
-- **线上验收闸门**（`scripts/verify-channels.py`，自证 9/9）：部署后逐通道核对
-  **本次产物指纹**（`STATIC-CONTRACT-BUILD <hash>` 写进 index.html）与
-  `catalogue.verified_at`。判据锚在产物本身，**不是通道之间是否一致** ——
-  全都停在旧产物时一致性同样成立（这正是我第一次误判的原因）。
-  实测（2026-11-01）：`sync-deploy` 在该步**红**并如实列出 EdgeOne 三项全败，
-  GitHub Pages 通过。复跑：`python3 scripts/verify-channels.py --expected site/dist
-  --channels site/channels.json`。
-  **`base_proxy` 仍未填**——语义切分：catalogue 的 `base_proxy` 是**字节侧**逐 release
-  反代（代理 release asset），`/static/` 两 URL 是**站点镜像**，两者不是一回事；
-  字节侧候选（`isui.ren/repo/<owner>/<repo>/releases/download/<tag>/`，heart 反代 GitHub）
-  待试点真 release 落地时验链再填（shirone 003 §5.2 同意此序）。
-  卫生：本地 `site/dist` 已重建（它是 gitignore 的构建物；三通道读的 deploy 分支由 CI
-  每推重建，本地落后不影响通道，但按 shirone 003 §4 提醒保持新鲜）。
-- **事实系统**（2026-11-01 接线）：pre-commit 重渲染机器块 + 跑 commit 相位全部闸门
-  （实测 ran 8 / off 6 / failed 0；复跑 `sh reflect-hooks/pre-commit`）。off 态明说未启用、
-  不算通过（ab / instruments / invariants / locks / pins / world —— 各自的旋钮文件未配，
-  配了即自动收编）。CI 同判据：`gates` workflow。阴性实测：正文裸数字会被事实闸门打红
-  （`999999` 试探已验证），恢复即绿。
-- **邮件**：001（契约移交）已读归档，当前未读 [[mail_unread]] 封；往来表见 `mail/README.md`。
-- **v1.1 许可证协议（2026-11-01 定稿，经两次用户纠正）**：manifest `schema: 3`，
-  `license: {id, url}` —— **名称 + 指向全文的 https 链接，两项都必填**。
-  用户裁定原话：「各家 license 文章不一样，改成指向链接，强制要求 release 填写每个产物的
-  license 在那个仓库的链接，毕竟有过几代换许可证的场景」。
-  前两版被判据否掉：① 三态 + 见证链 + 修订锚 ⇒ 「把不知道变成下载路径上的闸门」；
-  ② 只写 SPDX id ⇒ 各家正文不同且会换代，字符串会过期。
-  **三层各管一件事**：字节（`GET <base>/<file>`，不认识许可）/ manifest（展示 `id`，
-  点 `url` 看全文）/ catalogue（缺任一 ⇒ 不收录）。
-  实现：校验器 V11（[[tool_check_release_selftest_pass]] PASS）、派生器 G7（20 PASS）。
-  真实数据：13/13 个包的 `id` + `url` 全部现成（上游 `fa-copyright` 链接），
-  同时通过 V11 与 G7。**链接可达性协议不验证** —— 实测本机 3 个样本 1 个 `200`、
-  2 个 `000`（本网络出口问题，非链接缺陷），这是「协议不假装能证真伪」的又一例。
-- **v1.1 迁移已启动（2026-11-01）**：已发两封信。
-  ① `extra-content` `mail/119`：15 个 release 需重发（asset 不用动，只换 manifest）；
-  13/13 个包的 `{id, url}` 全部现成（`packages/*.json` 的 `fa-copyright` 链接），迁移是转录。
-  ② `LLVM-wasm` `mail/018`：**明确要求现在别改 CI** —— 我实测他的 `release.yml`
-  从 `Octave-Extra-Content` 取工具（`git clone ... /tmp/ec` + `/tmp/ec/tools/check-release-v4.py`），
-  所以依赖顺序是「我 → extra-content → LLVM」。
-  另：LLVM 仓级许可 `AGPL-3.0` ≠ 产物许可 `Apache-2.0 WITH LLVM-exception`，
-  这正是 v1.1 要求 release 自带许可的理由；`v0.1.0`–`v0.1.4` 是 schema 1 前契约格式，
-  给三个选项（弃用 / 重发 / 保持被 G5 挡）并倾向弃用。
-- **v1.1 迁移进展（2026-11-01）**：`extra-content` **15 个 release 全部升 schema 3**
-  （`mail/read/006` = 他们的 `135`）。**全量复跑 15/15**（`gh release download` 逐个取）：
-  全部 `schema: 3` + `license` 合法 + **V1–V11 全绿**，复合表达式原样保留
-  （pyodide `MPL-2.0 AND BSD-3-Clause`、geometry `GPL-3.0-or-later AND BSL-1.0`、
-  optim 三元 AND、splines 带 `LicenseRef-public-domain`）。
-  **G7 实测 15/15 上架且带许可**；反向（去掉 license）正确拒绝。
-  注：全量派生 `sync-catalogue.py --dry-run` 在本机超时（21 个 release 逐个下载，
-  本网络对 GitHub 不稳）；改用已下载 manifest 直跑 `verify_entry` 得上述结果。
-  他们同步了工具，并新写 `upgrade-manifest-license.py`（自证 13/13，含
-  「改了字节 ⇒ 必须判身份变了」的反向断言）。
-  **已回信裁定四件**（`extra-content/mail/120`）：① 采纳他们的 `-OR-` 词边界坑
-  （`GPL-3.0-or-later` → `GPL-3.0-OR-later` 且**原校验器会放行**——已加判据，
-  自证 35 → 37）；② 采纳 zstd 逐块解码进客户端指引（「单块成功不构成多块正确」）；
-  ③ 两份 manifest 层级**不进契约**，只写边界句；④ 生成器**保持两步**（选 B），
-  理由是失败隔离 + 时间分离 + 可移植。
-  **已给 LLVM 发绿灯**（`LLVM-wasm/mail/021`）：前提满足，附 CI 精确 diff；
-  提醒先确认取到的是 37 那版。
-- **LLVM `022` 抓到我三处错（2026-11-01，已复跑确认并更正）**：
-  ① 它 `git clone` 到的 extra-content main 是 **35 不是 37**，按我 `021` 的判据在等 ——
-  阻塞真实存在。我已把 37 版放进 extra-content **工作树**（未提交，投递≠提交），
-  并去信 `141` 催同步；**在他们提交前 LLVM 继续等是对的**。
-  ② 我建议它的 `license.id`（`Apache-2.0 WITH LLVM-exception`）**漏了 AGPL 那一半**
-  —— 它仓 `LICENSE` 与 `driver/*.mjs` 是 AGPL-3.0-or-later，实际 `head -2 LICENSE` 确认。
-  ③ 另一处把 emscripten 写成 `BSD-3-Clause` 是**错的**（`head -6 LICENSE-EMSCRIPTEN.txt`
-  原文：「available under 2 licenses, the MIT license and the University of Illinois/NCSA
-  Open Source License」⇒ `MIT OR NCSA`）。**错的比空的更坏。**
-  已回信 `LLVM-wasm/mail/023` 逐条认错；正典新增 §4.5「协议证明不了声明为真」
-  （把我这两处错当实例写进去）与 §4.6「不可变是地基，不是约束」（采纳它的措辞）。
-  **工具侧**：我的 `parse_spdx` 能处理它的复合表达式（实测通过），
-  但 `NCSA` 是否真实 SPDX ID **验不了** —— 已明说为已知限制。
-- **LLVM `024` 复核（2026-11-01）**：它把 `NCSA` 核到了 SPDX 官方列表
-  （`licenses.md:483` 表格 / `:1347` 链接 / `text/NCSA.txt` 正文与包内同源）。
-  **我复跑确认四处全对**（Apache-2.0 `:880`、MIT `:1305`、AGPL-3.0-or-later `:866`、
-  LLVM-exception `:1635`）——我上一封说的「无法验证」，这次被验掉了。
-  采纳它的两条：① 正典加**可选** `license.verified`（人核留痕，不参与 V11），
-  用来固化「id 为什么对」（它做的 `_spdx_verified` 是同一件事）；
-  ② `maintaince.md` 加惯例 **「跨仓等待条件必须是可执行的一行命令」**——
-  说「已就绪」时必须附它现在返回什么（下游只能测它 clone 到的东西）。
-  工具同步**仍未解除**（截至本条：extra-content main 仍 `35 PASS`），LLVM 继续等是对的。
-- **站点数据自动化（2026-11-02）**：页面里三处手写数据全部改为自动读取。
-  ① **自证数**：构建时跑 `--selftest` 数 PASS 行（生成器 / 校验器 / 构建器 / 派生器四个）；
-  **发现真实漂移**——页面上手写的「校验器 26 PASS」早已过时（实为 37），
-  自动读取后才暴露。② **通道表**：从 `site/channels.json` 生成（原来手写三个 URL）。
-  ③ **收录/排除**：本来就从派生 catalogue 读，未变。页脚加 `© 2026 ArchivalEra`。
-  **自证期间不跑自证**（`SC_BUILD_SELFTEST=1`）——否则 `build-site --selftest` 会
-  调 `build()` ⇒ 自己调自己 ⇒ 递归爆栈（实测踩到，已修）。构建器自证仍 13 PASS。
-- **extra-content 已同步 37（2026-11-02）**：`git clone && --selftest` ⇒ `37 PASS`（复跑确认）。
-  LLVM 的阻塞**已解除**。他们信里写 `upgrade-manifest-license.py` 是 13 PASS，
-  实测 **25 PASS**（数字又漂了 —— 正好印证本节「站点数据自动化」的必要性）。
-  **采纳他们建议写进正典 §4.5**：`license` 过了 V11 **≠** 许可写得对 ——
-  V11 只挡机械错形，语义正确性必须逐条核。附三次同一夜的实例
-  （我两次推断 + extra-content 一次推断，**三次都过了 V11，三次内容都错**）。
-- **站点英文闸门 + 废弃契约标注（2026-11-02）**：用户裁定「html 页面不准出现中文」与
-  「之前那些 contract 都标成 deprecated」。
-  ① `index.html` 全英文（CJK 实测 `0`）；契约 `.md` 正文保留中文（那是内容，不是门面）。
-  ② 废弃标注分级：`v0`/`v1`/`v2`/`v3`/`v3-absorption-audit` 标 **DEPRECATED**；
-  **`v4` 标 SUPERSEDED IN PART**（V1–V10 仍有效，只是 `schema: 2` 被 v1.1 的 3 取代）——
-  一刀切把 v4 标成废弃会误导读者。
-  ③ 页面文档列表按横幅自动渲染 `[DEPRECATED]` / `[PARTLY SUPERSEDED]`。
-  新闸门 `zreflect/check_site_lang.py`（commit 相位，实测 **ran 10 / off 6 / failed 0**）：
-  H1 HTML 无 CJK / H2 **完全废弃**的文档页面必须标（部分取代不强制，否则判据本身错）/
-  H3 非权威文档必须有横幅。**两条阴性验证均正确检出**（塞中文、去横幅）。
-- **H1 漏洞已补（2026-11-02，线上实测抓到）**：首版闸门只查 `index.html`，
-  而**本地构建用的是空兜底 catalogue**（无 excluded）⇒ 永远查不到那条。
-  线上真实页面有 **40 个 CJK 字符**，来源是 `sync-catalogue.py` 的中文诊断消息
-  （`G5 schema=1（本客户端只认 2/3）`）被直接渲染进排除表。
-  修法：① 派生器给每条排除加 `reasons_en`（按闸号分类的英文摘要，中文 reasons
-  保留给维护者）；② 页面优先渲染 `reasons_en`；③ 闸门加 **H4**（catalogue 对外
-  字段不得含中文、excluded 必须有 `reasons_en`）；④ CI 把派生件同时写到
-  `site/catalogue.live.json` 供闸门读（gitignore），并在构建**前**跑闸门。
-  **用线上真实 catalogue 验证**：闸门报 6 个问题（H1 40 个 CJK + 5 条缺 reasons_en），
-  修复后重跑应全绿。
-- **页面精简与字段清理（2026-11-02，用户三轮纠正）**：用户裁定
-  「整个页面以及用户实际拉下来的 catalogue 里仅英语 / 协议不准动 / 三个站都有些坏链接 /
-  每个 release 都要标许可证且全自动派生 / proxy 那栏去掉 / 保持风格但字数大幅减少」
-  +「不要自己造字段，协议里有的复用到页面上，null 就是 null 不要 not declared」。
-  结果：页面 CJK=0、可见文字 `5458`（原 `7063`，-23%）、proxy 0 次、
-  17 条 release 全部有许可单元格（schema 3 显示 `{id,url}` 可点链接、schema 2 显示 `null`）、
-  许可**全部从 manifest 原样抄**（无手写、无推断）。
-  自造字段清除：`summary_en`、`reasons_en`、`source_repo`、`tag`（条目内）、`not declared` 展示态。
-  excluded 改用协议的词 `reason`（单数英文串）。
-  **code review（两轴）抓到 6 个真 bug 并已修**：① `derive` 排序仍读已删的
-  `source_repo` ⇒ 任一 release 通过即 `KeyError`；② `reason` 被无条件覆盖成
-  `validation failed`（丢了早退路径的原因）；③ H2 调用被误删 ⇒ 闸门假绿；
-  ④ `html.escape("&mdash;")` 二次转义印出字面 `&amp;mdash;`；
-  ⑤ H4 缺 catalogue 时静默跳过（「没跑 ≠ 通过」）；⑥ 兜底源 note 仍中文。
-  闸门 H5 新增：页面 15 条相对链接逐条核对产物内文件（0 死链）；外链不探测
-  （本机网络对 GitHub/Cloudflare 不稳，会误判）。
-- **死链判定修好（2026-11-02，用户指出）**：用户说「isui.ren/static 那边大部分链接都是死的，
-  出 `200` 有可能是 `404` 兜底页，你的判定需要修」。
-  **实测确认**：EdgeOne 对不存在路径返回 **`200` + 611B SPA 兜底页**；Pages 返回真 `404`。
-  我的原判据（只看状态码）**会被完全骗过** —— 且网络抖动时「URLError + 兜底页」
-  一起伪装成正常，最恶劣。
-  **修法**：闸门 H6 改为**内容指纹判定** —— 先请求一个绝不存在、带唯一后缀的路径取兜底指纹，
-  再逐链接比对 body sha256；等于兜底指纹 ⇒ 死链。**不可达也判失败**（重试 2 次防瞬断）。
-  实测（三通道逐条，Cloudflare 经 `2080` 代理）：
-  `github-pages 15/15 dead=0` ✅ ·
-  `cloudflare 15/15 dead=1 (LICENSE → 404)` ❌ ·
-  `edgeone 15/15 dead=1 (LICENSE → 兜底页 200)` ❌。
-  **闸门支持 `SC_HTTP_PROXY` 环境变量** —— 本机对 Cloudflare 有 TLS reset，
-  没代理时该通道恒 URLError，会把「网络问题」误报成「死链」；代理能区分两者。
-  **发现一条真实死链**：EdgeOne 的 `/static/LICENSE` 命中的是兜底页 —— 根因是 shirone 的
-  `deploy.yml` 同步列表**硬编码**且漏了 `LICENSE`（我 11-01 加的文件）。已发信
-  `Shirone-personalized/mail/009`，给他们两个方案（读 `files.json` / 手工加 LICENSE，推荐前者）。
-  **配套**：构建产物新增 `files.json`（精确文件清单，同步方照抄，不手写列表）+
-  自证「files.json 与实际产物逐条相等」；构建器自证 13 → 14 PASS。
-- **第三源接入 + 两条通道修好（2026-11-02）**：
-  **① `Octave-Full-Wasm` 已订阅**（`kind: "engine"`）—— 该词取自**内容契约**
-  （`v3-absorption-audit.md:63` 的 `src`/`pre`/`engine` 三值），不是新造。
-  用户裁定的 non-free 政策：**按 G1–G7 收，不额外加 policy** —— `wasm64ip` 链了
-  non-free Rust 排序核（`LicenseRef-nonfree-rust-sort-kernel`），形状合法故收录，
-  free/non-free 由读者看页面判断，协议不做价值判断。
-  我独立复跑（零下载判据）：**`463` 用例 / 0 问题**；`wasm32` 的 `octave.wasm`
-  第一块 5MiB 内 `atomics` 出现 **0** 次（他们的零-atomics 声明成立）。
-  他们另有一个 tag `wasm32-11.3.0-1ed3e528` **无 manifest.json**，被 G1 正确排除。
-  **② 修了一条真实健壮性缺陷**：首次派生时 `forge-geometry` 因一次 `No route to host`
-  被写进 excluded —— 那是把「测不到」判成「不存在」。已加 3 次重试 + 反向用例
-  （前两次失败第三次成功 ⇒ 必须上架）。派生器自证 20 → 21 PASS。
-  **③ shirone `026`**：两条通道的 `LICENSE` 死链都已修（Cloudflare 是扩展名白名单挡的、
-  EdgeOne 是手写列表漏的），都改为读 `files.json`。他们的 `stage-static-tree.py`
-  补了两个我示例代码的洞（清单有但源缺 ⇒ 必红；`../` 越界拒）——**比我给的方案强**。
-  他们撤掉了 `rm -rf __pycache__`（症状源已断）。CF 白名单边界（无扩展名只认
-  `LICENSE`/`NOTICE`/`COPYING`/`AUTHORS`）我按**安全收益**采纳：契约内客户端只请求
-  manifest 里 `file` 逐字给出的名字，**那些名字一定有扩展名**，所以该白名单不伤任何
-  契约内客户端。
-- **两条撤回/修正（2026-11-02）**：
-  **① `Octave-Full-Wasm` 撤回了 non-free 声明**（其 `002`）。`wasm64ip` 原先标
-  `AGPL-3.0-or-later AND LicenseRef-nonfree-rust-sort-kernel`，**是他们标错的** ——
-  Rust 排序核是**本仓自己的 `#![no_std]` 源码**（`build/113/rust/Cargo.lock` 只有
-  `rs_sort` 一个 package，无第三方 crate），三个产物全部 `AGPL-3.0-or-later`。
-  他们把维护口径里的「non-free」（指**上游社区不收这个补丁**）误当成许可。
-  **我的失误**：上一封信里我写「逐条核过 ✅」—— **只核了形状，没核内容**，
-  而这正是我刚写进 v1.1 §4.5 的判据（「过了 V11 ≠ 许可写得对」）。已重派生，
-  `LicenseRef` 归零。他们把 `NONFREE-RUST-KERNEL.md` 改名并改写（留痕不删）。
-  他们选 C 保留 `wasm32-11.3.0-1ed3e528`（无 manifest）：那是**在外跑了一周的下游链**，
-  删它会断链；永久留在 `excluded` 是**记录**不是缺陷。
-  **② shirone 开源了 `audit-static-channels.py`**（其 `027`，6 条自证），
-  独立实现 + 多一条 P4「与源产物逐字节相同」。**他们指出 H6 的真实边界**：
-  H6 原遍历源是「HTML 里的相对链接」⇒ **产物里存在但 HTML 不引用的文件永远漏检**
-  （实测 `files.json` 与 `index.html` 自己就不在任何 href 里）。
-  **已修**：H6 改为从**每个通道**取它自己的 `files.json` 作遍历源
-  （覆盖面 15 → 16，且能发现「某通道少发文件」）。三通道 checked=16 dead=0。
-  另：他们第一版探针把 `404` 当「通道不可用」⇒ 误判两条好通道，正是本仓纪律 1
-  「测不到 ≠ 不存在」；修法（4xx/5xx 当有效观测、只有网络层故障才抛）已写进他们注释。
-- **派生滞后闭环（2026-11-02，无人值守）**：收两封信。
-  **① host `003`**：撤了 `octave-11.3.0-three-products-36b951e` 与 `octave-11.3.0-r2`
-  两个 tag，新发 `octave-full-wasm-v0.1.0`（`manifest.id = Octave-Full-Wasm/v0.1.0`，
-  82 assets，schema 3，纯 AGPL）。原因是**版本轴改名** —— 用户裁定「必须跟 GNU 维护的
-  octave 区分」（GNU 自己的 tag 是 `release-11-3-0`）。命名口径对齐 LLVM（`v0.1.6`）。
-  他们确认**两版产物字节完全相同**，差异只有 `manifest.id` 与 entry 顺序，
-  所以「没有内容更合规的一版可留」，两版全撤重发。
-  **② extra-content `007`**：实测 catalogue 里 master 仓两条 base 全 `404`
-  （旧 tag 已删、新 tag 未入）。**机制解释是对的**：派生是 6 小时定时，
-  上游「删旧 + 发新」后最长 6 小时窗口里 catalogue 指向死 tag。不是实现 bug。
-  **处置（我这边全程做完）**：
-  - 重新派生 → **17 条上架 / 6 条排除**，旧 tag 消失，新 tag `Octave-Full-Wasm/v0.1.0` 在列；
-  - **17/17 条 base 逐条验可达**（`base + manifest.json` 全 `200`）；
-  - cron 从 `*/6` 改 `*/1`（窗口 6h → 1h）；
-  - **新增闸门 H7**：在线探测 catalogue 每条 `base + manifest.json` 必须可达。
-    阴性验证用线上旧 catalogue + 已删 tag ⇒ 精确报 `3/19 条 base 取不到`
-    （连当时真实的两条旧 tag 一起抓出）。
-  **不采纳的建议**：extra-content 建议在正典客户端算法节加「catalogue 是可回退列表」
-  —— **协议不动**（用户明确裁定），该问题在派生侧用 H7 + 缩短窗口解决。
-- **Cloudflare 通道已修 + 路径迁移（2026-11-02 闭环）**：用户告知「cf 是改成 `/` 而不是
-  `/static` 了」。实测确认：根路径 `index.html`/`files.json` 全 `200`，`/static/` 全 `404`。
-  已更新 `site/channels.json` 的 `base`（`…/static/` → `…/`）与 README/STATE 的挂牌；
-  H6/H7 与「线上验收」都读该配置，故自动跟随。
-  **历史记录（保留，勿删）**：此前 `static.mango-mesa.ccwu.cc/static/*` 曾**全部 `404`**
-  `static.mango-mesa.ccwu.cc/static/*` **全部 `404`**（`LICENSE` 是 `301`），
-  而同一时刻 `isui.ren/static/*` 全部 `200`。**分界在 CF Worker，不在源。**
-  我排除了三件事（各有复跑命令，已写进 `Shirone-personalized/mail/011`）：
-  ① 不是我的产物 —— `deploy` 分支 17 文件齐全（含 `files.json`）；
-  ② 不是缓存 —— `?ts=` 绕过照样 `404`；
-  ③ 不是回源目标 —— raw `deploy/files.json` ⇒ `200`、`count: 16`。
-  异常组合：**有扩展名的 `404`、无扩展名的 `301`** —— 扩展名白名单解释不了，
-  更像 Worker 的 `/static/*` 路由整体没挂上。已发信，不碰他们仓。
-  **顺带修了 H6 的一个设计缺陷**：原来任何通道失败都阻塞发布 ——
-  那会让「别人的通道挂了」拦停「我的产物上线」，问题叠加。
-  现在 `site/channels.json` 加 `owned` 字段：**只有我方管线（github-pages）
-  的失败阻塞发布**；外部通道失败打 `⚠` 并明说「不阻塞发布」，但**绝不静默**。
-  实测：github-pages dead=0 / edgeone dead=0 / cloudflare dead=16 → 警告，`rc=0`。
-  **同一判据也接进 `verify-channels.py`**（线上验收那步）：原来它等所有通道就绪，
-  CF 一挂整条 workflow 就红。现在 owned=false 的通道未就绪只打 `⚠`，
-  自证加「归属分流」用例（10 PASS / 0 FAIL）。
-- **第四源接入 + 修 id 尾斜杠 bug（2026-11-03）**：`OpenModelica-Full-Wasm` 已订阅
-  （`kind: "engine"`，与 `Octave-Full-Wasm` 同档 —— `kind` 属内容契约词表，
-  我不扩表）。真实派生 **19 条上架 / 7 条排除**，omc 两条在列：
-  `v0.2.0-wasm32`（AGPL-3.0-or-later）、`msl-4.1.0-maint.om`（BSD-3-Clause）。
-  **验证用零下载**（GitHub 平台 `digest` 逐块对 `chunks[].sha256`），不依赖本地盘核对。
-  **修了一条真 bug**：`verify_entry` 的 `"%s/%s" % (man.get("id") or …, "")` 死代码
-  给 `id` 加了尾斜杠（产生 `OpenModelica-Full-Wasm/v0.2.0-wasm32/`）——
-  omc 是第一个用 `<repo>/<pkg>-<ver>` 带点号短横形状的仓，前三条源没暴露它。
-  **实测踩到的取件坑（已写进回信）**：`gh release download <tag> -p manifest.json`
-  拿到的是旧/缓存版本，内容 sha 与平台 `digest` 不符（`dd938745…` vs `1794718f…`）；
-  正确取法走 assets API octet-stream。G2 就是这么抓到的。
-  **他们提的契约变更通知机制**：四项全采纳，但落地改成**机械可查**（`contract.json`
-  指纹 + `sources.json` 的 `contract_selftest` 期望值），不做"每次定稿发信"——
-  后者靠记性，正是 034 事故的失效模式。`contract.json` 待下次实质改动一并实现。
-  **裁定他们的问题**：`supply-msl` 两份（extra-content 与 omc 各一份）**合法并存** ——
-  `id` 不同即两个 release；协议不做 blob 去重（v4 §2.3 apt 判据）；归属 ≠ 排他。
-- **悬案**：`questions/05`（zstd vs gzip 在 EdgeOne 真链路，各 5 次取中位数）未结。
-- **未决项**：U1 codecs 顺序（= 悬案 05）、U2 chunkSize 按件可配、U3 asset 名 product 前缀、
-  U4 接入排期——裁定权在本仓（移交信 §5）。
+v0, v1, v2, v3 and the v3 absorption audit are `DEPRECATED` — kept only so rejected
+designs and their criteria are not re-opened. **Not yet piloted end to end; not
+declared stable.**
 
-## 试点链验收判据（U4 落地，可勾选）
+## Tools
 
-1. ☐ 生产者（宿主 / extra-content）对真包（候选 `optim 1.6.3`，实测数据现成）**发 GitHub release**
-2. ☐ 本站 `catalogue.json` 收录该 release（只记 id + base，不收字节）
-3. ☐ 消费者（Octave-UI）从 base（GitHub 直链或反代）拉 manifest + 资产：
-   全程普通 GET，逐块 sha + 总 sha 逐字一致
-4. ☐ 复跑记录落本仓（数字旁边写复跑方式）
+| Tool | Self-test |
+|---|---|
+| `tools/make-manifest-v4.py` | `[[tool_manifest_selftest_pass]]` PASS |
+| `tools/check-release-v4.py` | `[[tool_check_release_selftest_pass]]` PASS |
+| `scripts/sync-catalogue.py` | derivation: G1–G7 |
+| `scripts/build-site.py` | `[[site_build_selftest_pass]]` PASS |
+| `scripts/verify-channels.py` | deployment verification |
+
+Reproduce: `python3 tools/check-release-v4.py --selftest`.
+
+## Catalogue
+
+**Derived, never hand-written.** `site/sources.json` lists which repositories are
+subscribed; every tag is read from their releases at derivation time.
+
+- Four sources: `Octave-Extra-Content` (forge), `LLVM-wasm` (toolchain),
+  `Octave-Full-Wasm` (engine), `OpenModelica-Full-Wasm` (engine).
+- Gates G1–G7 decide admission. Anything that fails is excluded **with its reason
+  listed** — a bad release never goes live, and never disappears silently.
+- A release with no license declaration reads `"license": null`. That is a
+  legitimate state for static resources such as images, not an error.
+- Derivation runs on every push and hourly (`cron: '17 * * * *'`).
+
+Reproduce: `python3 scripts/sync-catalogue.py --dry-run`.
+
+## Site
+
+Built by `scripts/build-site.py` into `site/dist`. The page is plain XHTML 1.1 with
+zero JavaScript and zero external resources. Numbers on the page are measured by the
+builder at build time, never copied by hand.
+
+`files.json` is published alongside the artifact. It is the exact file list; mirrors
+copy it rather than maintaining their own list.
+
+## Deployment
+
+One artifact, three channels:
+
+| Channel | URL | Owned |
+|---|---|---|
+| GitHub Pages | `https://archivalera.github.io/Static-Contract/` | yes |
+| Cloudflare | `https://static.mango-mesa.ccwu.cc/` | no |
+| EdgeOne | `https://isui.ren/static/` | no |
+
+`site/channels.json` carries `owned`. **Only a failure on an owned channel blocks a
+release.** External channels report a warning and never silently disappear.
+
+Pipeline: push `main` → derive catalogue → gates → build → force-push orphan
+`deploy` branch → `actions/deploy-pages` → dispatch the EdgeOne rebuild → verify.
+
+## Gates
+
+The roster is rendered from declaration lines at the bottom of this file.
+Execution reads the roster (`registry --run commit`), never a filename glob.
+**An `off` gate is not a passing gate** — it is reported separately.
+
+## Open
+
+- `questions/05` — zstd vs gzip on the real EdgeOne link (5 runs, median). Unresolved.
+- U1 codec order (= question 05), U2 per-entry `chunkSize`, U3 asset name prefix,
+  U4 rollout schedule for remaining repositories.
+- `contract.json` fingerprint file (machine-checkable contract version for downstream
+  CI) — proposed, not implemented.
+
+## Pilot chain acceptance
+
+1. [ ] Producer publishes a real GitHub release (candidate: `optim 1.6.3`).
+2. [ ] This catalogue lists it (id + base only, no bytes).
+3. [ ] Consumer pulls manifest and assets from base: plain GET throughout, per-chunk
+   and total sha match byte for byte.
+4. [ ] Reproduction recorded here, next to the number.
 
 <!-- AUTO:FACTS -->
 > 本区块由 `zreflect/facts.py --render-doc` 从 `FACTS.json` 渲染，**不要手改**（pre-commit 会重算并 `git add`）。

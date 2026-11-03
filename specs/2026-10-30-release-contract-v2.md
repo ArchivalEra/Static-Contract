@@ -1,134 +1,143 @@
-# 发布契约 v2 · 初代
+# Release Contract v2 · first generation
 
-> ## ⛔ DEPRECATED — 历史文档，不是权威（2026-11-02 标注）
+> ## DEPRECATED — historical, not authoritative (marked 2026-11-02)
 >
-> 本文**从未投递、从未进任何 schema、从未推广**，已被后续版本取代。
-> **现行权威 = `specs/2026-10-30-release-contract-v4.md`（V1–V10 基础条款）
-> + `specs/2026-11-01-release-contract-v1.1-license.md`（V11 许可，schema 3）**。
-> 保留本文的唯一理由是**被否方案的判据**（防止将来重开）——不要照它实现。
+> Never delivered, never entered any schema, never promoted. Superseded.
+> **Current authority: `2026-10-30-release-contract-v4.md` (V1–V10) plus
+> `2026-11-01-release-contract-v1.1-license.md` (V11, schema 3).**
+> Kept only for the rejection criteria (so they are not re-opened). Do not implement from it.
 
-> **状态**：初代协议草案，供用户审。**未投递、未进 schema、未推广。**
+> **Status**: first-generation protocol draft, for user review. **Not delivered, not in schema,
+> not promoted.**
 >
-> **v1 → v2 的改动（全部来自用户纠正 + 我实测）**：
-> 1. **砍掉 Range 全族**——预分片让 Range 不必要。用户点破：「最终用户拉的仅仅只是一个
->    没多少头的标准请求」。实测浏览器 PoC 已证明：普通 GET × 并发即可。
-> 2. **砍掉 seek table / `range.basis` / `granularity`**——那是我自创的，违反
->    「不要想太多自创东西」。
-> 3. **`variants` 改为有序数组**（回退链是**数据**不是代码分支）：加新格式 = 数组加一项，
->    schema 一个字不改。这是让协议「永远不需要更新」的机制。
-> 4. **初代只开 zstd + gzip + identity，不开 br**（用户裁定：**不是不支持，是初代不开**）。
-> 5. **格式协商交还给 HTTP**（`Accept-Encoding`）——**我们不管**。
+> **v1 -> v2 changes (all from user corrections + my own measurements)**:
+> 1. **Cut the entire Range family** — pre-slicing makes Range unnecessary. The user's objection:
+>    the end user fetches exactly one standard request with barely any headers. A browser PoC
+>    already proved it: plain GET x concurrency suffices.
+> 2. **Cut seek table / `range.basis` / `granularity`** — those were my own inventions, violating
+>    "do not invent more than necessary".
+> 3. **`variants` becomes an ordered array** (the fallback chain is **data**, not code branches):
+>    adding a new format = add one array entry, and not a single character of the schema changes.
+>    This is the mechanism that lets the protocol "never need updating".
+> 4. **The first generation enables only zstd + gzip + identity, not br** (user ruling: **it is not
+>    unsupported, it is just not enabled in the first generation**).
+> 5. **Format negotiation is returned to HTTP** (`Accept-Encoding`) — **not our concern**.
 
 ---
 
-## 0. 一句话
+## 0. One sentence
 
-> **一个 release = 一个不可变目录。`manifest.json` 是唯一入口。
-> 所有字节都是普通文件、普通 GET。**
+> **One release = one immutable directory. `manifest.json` is the only entry.
+> All bytes are plain files fetched with plain GET.**
 >
-> 用户侧的唯一动作：`fetch(manifest)` → 按 `variants` 顺序挑一个能解的 → 并发拉块 → 拼 → 校验。
-> **没有 Range、没有条件请求、没有自定义头、没有协商协议。**
+> The only consumer-side action: `fetch(manifest)` -> pick the first decodable entry in `variants`
+> order -> fetch chunks concurrently -> assemble -> verify.
+> **No Range, no conditional requests, no custom headers, no negotiation protocol.**
 
 ---
 
-## 1. 实测依据（每条都是可复跑的判据）
+## 1. Measurement basis (every item is a reproducible criterion)
 
-### 1.1 浏览器解压能力（这决定「谁能当兜底」）
+### 1.1 Browser decompression capability (this decides "who can be the fallback")
 
 ```
-DecompressionStream('gzip')     ✅ 原生
-DecompressionStream('deflate')  ✅ 原生
-DecompressionStream('br')       ❌ 不支持
-DecompressionStream('zstd')     ❌ 不支持
+DecompressionStream('gzip')     supported natively
+DecompressionStream('deflate')  supported natively
+DecompressionStream('br')       not supported
+DecompressionStream('zstd')     not supported
 ```
 
-⇒ **gzip 是唯一零依赖的兜底**；zstd/br 都必须带外挂解码器。
+=> **gzip is the only zero-dependency fallback**; zstd/br both require an out-of-band decoder.
 
-### 1.2 解码器体积
+### 1.2 Decoder size
 
-| 编码 | 解码器 | minified | gzip 后 |
+| Encoding | Decoder | minified | after gzip |
 |---|---|---|---|
-| gzip | 浏览器原生 | 0 | **0** |
-| zstd | `fzstd@0.1.1` | 8,394 B | **3,860 B** ← 官方标 3.8kB，我实测 3860 ✅ |
-| br | 需 wasm（如 `brotli-wasm`） | ~100KB+ | 未测（初代不开） |
+| gzip | browser native | 0 | **0** |
+| zstd | `fzstd@0.1.1` | 8,394 B | **3,860 B** <- officially 3.8kB; I measured 3860 (correct) |
+| br | requires wasm (e.g. `brotli-wasm`) | ~100KB+ | not measured (not enabled in the first generation) |
 
-### 1.3 三种编码的压缩/解压（74.5MB wasm，5MiB × 15 块）
+### 1.3 Compression/decompression for the three encodings (74.5MB wasm, 5MiB x 15 chunks)
 
-| 编码 | 预分片总计 | 压缩耗时(8 核并行) | 解压耗时 | 解压吞吐 |
+| Encoding | Pre-sliced total | Compression time (8 cores parallel) | Decompression time | Decompression throughput |
 |---|---|---|---|---|
 | **zstd-19** | **15,349,112** | **3.7s** | **0.07s** | **1022 MB/s** |
 | gzip-9 | 20,908,462 | 5.0s | 0.21s | 363 MB/s |
 | br-q11 | 14,332,389 | 21.5s | 0.16s | 459 MB/s |
 | identity | 74,579,404 | — | — | — |
 
-**判读**：
-- zstd 比 gzip 小 **26.6%**，解压快 **2.8×**，压缩快 **0.74×**（都够快）⇒ **当第一顺位**；
-- br 只比 zstd 小 **6.6%**，但解码器重 30 倍、解压慢 2.2× ⇒ **初代不开，不是不支持**
-  （用户裁定：留位，不占初代复杂度）；
-- gzip 体积最差但**零依赖** ⇒ 兜底。
+**Reading**:
+- zstd is **26.6%** smaller than gzip, decompresses **2.8x** faster, compresses **0.74x** as fast
+  (all fast enough) => **first in priority**;
+- br is only **6.6%** smaller than zstd, but its decoder is 30x heavier and decompression is 2.2x
+  slower => **not enabled in the first generation, not unsupported** (user ruling: keep the slot,
+  do not spend first-generation complexity on it);
+- gzip has the worst size but **zero dependencies** => the fallback.
 
-### 1.4 并发收益（每连接 1.5MB/s + 80ms RTT，模拟真实 CDN）
-
-```
-conc=1   拉取 11,519ms
-conc=2   拉取  5,800ms   1.99×
-conc=4   拉取  3,175ms   3.63×
-conc=8   拉取  2,354ms   4.89×   ← 拐点
-conc=15  拉取  2,359ms   4.88×   ← 不再涨（15 块 ÷ 8 = 2 轮，第二轮吃不饱）
-```
-
-⇒ **默认并发 = 8**（拐点），且**并发数不应超过块数**。
-
-### 1.5 PoC 已跑通（浏览器真环境，全链路）
+### 1.4 Concurrency gain (1.5MB/s per connection + 80ms RTT, simulating a real CDN)
 
 ```
-用户动作：fetch(manifest.json) → 6 并发 fetch(chunk) → 逐块 sha → 解码 → 拼接 → 全局 sha
-结果：15/15 块，74,579,404 B，sha 8287589e…b001 == 期望   ✅ PASS
-zstd 变体：解码器加载 7ms，全程 606ms
-gzip 变体：全程 522ms（零解码器）
+conc=1   fetch 11,519ms
+conc=2   fetch  5,800ms   1.99x
+conc=4   fetch  3,175ms   3.63x
+conc=8   fetch  2,354ms   4.89x   <- knee
+conc=15  fetch  2,359ms   4.88x   <- no longer rises (15 chunks / 8 = 2 rounds, the second round is underfed)
 ```
 
-### 1.6 ★ zstd 的一个安全边界（必须写进契约）
+=> **Default concurrency = 8** (the knee), and **concurrency should not exceed the chunk count**.
 
-`fzstd` README 原话：
+### 1.5 The PoC already runs end to end (real browser environment, full chain)
+
+```
+Consumer action: fetch(manifest.json) -> 6 concurrent fetch(chunk) -> per-chunk sha -> decode -> assemble -> global sha
+Result: 15/15 chunks, 74,579,404 B, sha 8287589e…b001 == expected   PASS
+zstd variant: decoder load 7ms, total 606ms
+gzip variant: total 522ms (zero decoder)
+```
+
+### 1.6 A safety boundary of zstd (must be written into the contract)
+
+The `fzstd` README, verbatim:
 
 > only supports a maximum backreference distance of **2^25 (32 MiB)** bytes. If you need to
 > decompress files with an "ultra" compression level (**20 or greater**) AND if your files can
 > be **above 32MB decompressed**, `fzstd` *might* fail to decompress properly.
 
-**对我们的场景不适用**，因为**我们分片**：
+**This does not apply to our scenario**, because **we slice**:
 
 ```
-单块 = 5,242,880 B (2^23) < 2^25 (33,554,432 B)  ⇒ 安全
-且分块压缩本就没有跨块 backreference ⇒ 与 level 无关
+single chunk = 5,242,880 B (2^23) < 2^25 (33,554,432 B)  => safe
+and per-chunk compression has no cross-chunk backreferences anyway => independent of level
 ```
 
-⇒ **契约里写成不变量**（见 I6）：分块编码时 `chunkSize ≤ 2^25`，且**必须按块独立压缩**。
-这条同时约束了「未来谁想改 chunkSize 调大」的自由。
+=> **Write it into the contract as an invariant** (see I6): with chunked encoding,
+`chunkSize ≤ 2^25`, and chunks **must be compressed independently**. This also constrains the
+freedom of "anyone in the future who wants to raise chunkSize".
 
 ---
 
-## 2. 目录形状
+## 2. Directory shape
 
 ```
-<repo>/<tag>/                         ← 不可变。新版本 = 新 tag = 新目录
-  manifest.json                       ← 唯一元数据入口
-  chunks/zstd/000.zst … NNN.zst       ← 预分片（每块一个普通 URL）
+<repo>/<tag>/                         <- immutable. A new version = a new tag = a new directory
+  manifest.json                       <- the single metadata entry
+  chunks/zstd/000.zst … NNN.zst       <- pre-sliced (one plain URL per chunk)
   chunks/gzip/000.gz  … NNN.gz
 ```
 
-**不提供 `latest` 别名**——那是「永续更新」的入口。「永不更新」的强制就在目录名含 tag。
+**No `latest` alias is provided** — that is the entry point for "perpetual updating". The
+enforcement of "never updates" is precisely that the directory name contains the tag.
 
-**sidecar 整文件形态（可选，给不并发的小件用）**：
+**Whole-file sidecar form (optional, for small artifacts that are not chunked)**:
 ```
-<repo>/<tag>/<asset>                  ← identity 原文件
-<repo>/<tag>/<asset>.zst              ← 整块 zstd
-<repo>/<tag>/<asset>.gz               ← 整块 gzip
+<repo>/<tag>/<asset>                  <- identity original file
+<repo>/<tag>/<asset>.zst              <- whole-file zstd
+<repo>/<tag>/<asset>.gz               <- whole-file gzip
 ```
 
 ---
 
-## 3. manifest（初代全形状）
+## 3. manifest (full first-generation shape)
 
 ```json
 {
@@ -139,8 +148,8 @@ gzip 变体：全程 522ms（零解码器）
   "variants": [
     {
       "codec": "zstd",
-      "decoder": "fzstd@0.1.1",          // 可选：提示消费端要什么解码器
-      "decoderBytes": 3860,               // 可选：提示代价
+      "decoder": "fzstd@0.1.1",          // optional: hints which decoder the consumer needs
+      "decoderBytes": 3860,               // optional: hints the cost
       "totalBytes": 15349112,
       "chunked": true,
       "chunkSize": 5242880,
@@ -156,7 +165,7 @@ gzip 变体：全程 522ms（零解码器）
       "chunks": [ { "i": 0, "file": "chunks/gzip/000.gz", "bytes": 1395000, "sha256": "…" } ]
     },
     {
-      "codec": "identity",                // 最后兜底：单文件
+      "codec": "identity",                // final fallback: a single file
       "totalBytes": 74579404,
       "chunked": false,
       "file": "OpenModelicaCompiler_bg.wasm"
@@ -165,176 +174,183 @@ gzip 变体：全程 522ms（零解码器）
 }
 ```
 
-### 3.1 字段必要性（deletion test）
+### 3.1 Field necessity (deletion test)
 
-| 字段 | 删了会怎样 | 留？ |
+| Field | What happens if deleted | Keep? |
 |---|---|---|
-| `bytes` + `sha256`（顶层） | 边缘**无 Digest 头**（实测 `curl -sI` 无任何 digest）⇒ 消费端**无法**验证最终完整性 | **必留** |
-| `variants`（有序数组） | 只能靠试错（先试 zstd 404 再试 gzip…）= N 次往返，且「404」与「真没有」分不开 | **必留** |
-| `chunks[].sha256` | 乱序并发最常见的错（少一片/重复/错位）无法定位，只能整体重来 | **必留** |
-| `chunks[].bytes` | 同上，且 `Content-Length` 可能被中转改写 | **留** |
-| `chunkSize` | 消费端无法推导「一共有几块」以外的东西；且 I6 要靠它判安全边界 | **留** |
-| `codec` | 不知道用什么解 | **必留** |
-| `decoder` / `decoderBytes` | 消费端不知道要加载什么/值不值 | **留（可选）** |
-| `id` | manifest 自身身份；缓存键 | **留** |
-| ~~`range`~~ | 预分片后不需要 Range | **删** |
-| ~~`seekTable`~~ | 同上 | **删** |
-| ~~`contentEncoding`~~ | `codec` 已表达；HTTP 层的事不重复 | **删** |
-| ~~`url`（每块绝对 URL）~~ | 可由 `id` + `file` 推导 | **删** |
+| `bytes` + `sha256` (top level) | The edge has **no Digest header** (measured: `curl -sI` shows no digest at all) => consumers **cannot** verify final integrity | **must keep** |
+| `variants` (ordered array) | Only trial and error is possible (try zstd, on 404 try gzip…) = N round trips, and "404" is indistinguishable from "genuinely absent" | **must keep** |
+| `chunks[].sha256` | The most common error in out-of-order concurrency (one chunk missing/duplicated/misaligned) cannot be localized; only a full restart is possible | **must keep** |
+| `chunks[].bytes` | Same as above, and `Content-Length` may be rewritten by intermediaries | **keep** |
+| `chunkSize` | Consumers cannot derive anything beyond "how many chunks"; and I6 depends on it to judge the safety boundary | **keep** |
+| `codec` | No way to know how to decode | **must keep** |
+| `decoder` / `decoderBytes` | Consumers do not know what to load / whether it is worth it | **keep (optional)** |
+| `id` | The manifest's own identity; cache key | **keep** |
+| ~~`range`~~ | After pre-slicing Range is unnecessary | **delete** |
+| ~~`seekTable`~~ | Same as above | **delete** |
+| ~~`contentEncoding`~~ | `codec` already expresses it; do not repeat HTTP-layer concerns | **delete** |
+| ~~`url` (absolute URL per chunk)~~ | Derivable from `id` + `file` | **delete** |
 
-### 3.2 不变量（校验器逐条判，fail-closed）
+### 3.2 Invariants (checked one by one by the validator, fail-closed)
 
-| # | 不变量 | 反例 |
+| # | Invariant | Counterexample |
 |---|---|---|
-| **I1** | 顶层 `bytes`/`sha256` = **全部块解码拼接后**的字节与哈希 | 写成"某编码层"的 sha |
-| **I2** | `chunks[].sha256` 是**该编码块的字节** sha | 写原始 sha |
-| **I3** | 每个 `chunks[].bytes` 之和 == `variants[].totalBytes` | 声明与实际不符 |
-| **I4** | `variants` 非空，且**恰有一个** `codec:"identity"` 作为末位兜底 | 全是压缩格式（解不了就无路可走） |
-| **I5** | `chunked:true` ⇒ `chunkSize` 必填且 `chunks` 非空；`chunked:false` ⇒ 有 `file` 无 `chunks` | 半截状态 |
-| **I6** | ★`chunked:true` ⇒ `chunkSize ≤ 2^25`（fzstd 安全边界）+ 块必须**独立压缩** | 块 > 32MiB 且 level≥20 ⇒ fzstd 可能解不出 |
-| **I7** | `codec` 是**开放字符串**（不是枚举） | 加 br/xz/lz4 时要改 schema |
+| **I1** | Top-level `bytes`/`sha256` = the bytes and hash **after decoding and assembling all chunks** | Writing the sha of "some encoding layer" |
+| **I2** | `chunks[].sha256` is the sha of **that encoded chunk's bytes** | Writing the raw sha |
+| **I3** | The sum of all `chunks[].bytes` == `variants[].totalBytes` | Declaration does not match reality |
+| **I4** | `variants` is non-empty, and **exactly one** `codec:"identity"` sits in the last position as the fallback | All entries are compressed formats (nothing left if they cannot be decoded) |
+| **I5** | `chunked:true` => `chunkSize` required and `chunks` non-empty; `chunked:false` => has `file` and no `chunks` | Half-finished state |
+| **I6** | `chunked:true` => `chunkSize ≤ 2^25` (the fzstd safety boundary) + chunks must be **compressed independently** | chunk > 32MiB and level >= 20 => fzstd may fail to decode |
+| **I7** | `codec` is an **open string** (not an enum) | Adding br/xz/lz4 would require a schema change |
 
 ---
 
-## 4. 消费端算法（初代，伪码）
+## 4. Consumer algorithm (first generation, pseudocode)
 
 ```
-man = GET <dir>/manifest.json                       // 1 个请求，可永久缓存
-for v of man.variants:                              // 按声明顺序（回退链）
+man = GET <dir>/manifest.json                       // 1 request, cacheable forever
+for v of man.variants:                              // in declared order (the fallback chain)
     dec = {
-      "gzip":  () => nativeGzip,                     // 零成本
+      "gzip":  () => nativeGzip,                     // zero cost
       "zstd":  () => import(fzstd),                  // 3.8KB
       "identity": () => null,
     }[v.codec]
-    if (dec === undefined) continue                  // 不认识的编码 ⇒ 跳过（前向兼容）
+    if (dec === undefined) continue                  // unknown codec => skip (forward compatible)
     try:
-        parts = await Promise.all(                   // ★ 并发，默认 8
+        parts = await Promise.all(                   // concurrency, default 8
           v.chunks.map(c => fetch(c.file)            
             .then(r => r.arrayBuffer())
-            .then(b => { assert sha256(b) === c.sha256  // 逐块校验（错一块只重拉一块）
+            .then(b => { assert sha256(b) === c.sha256  // per-chunk verify (one bad chunk refetches only that chunk)
                          return decode(b) })))
         all = concat(parts)
         assert all.length === man.bytes && sha256(all) === man.sha256
-        return all                                   // ✅
-    catch: continue                                  // 这一档坏了 ⇒ 下一档
-throw NO_USABLE_VARIANT                              // 全试完才失败（响亮）
+        return all                                   // success
+    catch: continue                                  // this tier is broken => next tier
+throw NO_USABLE_VARIANT                              // fail only after all are tried (loudly)
 ```
 
-**三条设计要点**：
-1. **`dec === undefined ⇒ continue`** 是**前向兼容**的关键——未来 manifest 里出现
-   我们不认识的 `codec`（比如 `xz`），旧客户端会**跳过它、用后面的**，而不是崩。
-   **这就是"加新格式不需要改协议"的落地点**；
-2. **逐块校验 + 逐块重试**：只重拉坏的那块，不整体重来；
-3. **两道校验**：块级（防拼错）+ 全局（防解错）。
+**Three design points**:
+1. **`dec === undefined => continue`** is the key to **forward compatibility** — if a future
+   manifest contains a `codec` we do not recognize (say `xz`), old clients **skip it and use the
+   next one** instead of crashing. **This is where "adding new formats requires no protocol
+   change" lands**;
+2. **Per-chunk verification + per-chunk retry**: refetch only the bad chunk, no full restart;
+3. **Two checks**: chunk level (catches mis-assembly) + global (catches decode errors).
 
 ---
 
-## 5. 与既有契约的关系（不回退）
+## 5. Relation to the existing contracts (no regression)
 
-| 层 | 归谁 | 与发布契约的关系 |
+| Layer | Owner | Relation to the release contract |
 |---|---|---|
-| **内容契约**（`content-list`：`form`/`content`/`consumer`/`versions[]`/`files[]`） | 本仓语义 + 宿主 schema | **上游**，不改字段；未来加 `acquisition.releaseRef` **引用** manifest（先有实物再加） |
-| **引擎契约**（`octave.build.json`：构建/实测/verdict） | 宿主 | **上游**，只**引用**发布身份，不复制字节事实 |
-| **发布契约**（本设计） | 本仓设计 / 各仓产出 | **中间层**：字节身份的唯一处 |
-| **部署契约**（`deploy-contract.mjs`：base/字面量重写） | UI | **下游**，消费 manifest |
+| **Content contract** (`content-list`: `form`/`content`/`consumer`/`versions[]`/`files[]`) | this repo's semantics + host schema | **upstream**, fields unchanged; in future add `acquisition.releaseRef` to **reference** the manifest (only after the artifact exists) |
+| **Engine contract** (`octave.build.json`: build/measurements/verdict) | host | **upstream**, only **references** release identity, does not copy byte facts |
+| **Release contract** (this design) | designed in this repo / produced by each repo | **middle layer**: the single place for byte identity |
+| **Deploy contract** (`deploy-contract.mjs`: base/literal rewriting) | UI | **downstream**, consumes the manifest |
 
-**与「从源码构建契约」的冲突（`STATE` Q3：`ways` 是派生不是记录、不引入 `flavor`）**：
-发布契约**不动版本语义**。`fromSource` 仍是"能不能从源码构建"；
-"从哪个 release 取字节"是**取得路径**，与版本语义正交。**初代连 `acquisition` 都不加**
-——等 manifest 有实物、单仓试点通了再说。**这是"不跳步"的纪律。**
+**Conflict with the "build-from-source contract" (`STATE` Q3: `ways` is derived, not recorded; do
+not introduce `flavor`)**: the release contract **does not touch version semantics**. `fromSource`
+still means "can this be built from source"; "which release the bytes come from" is an
+**acquisition path**, orthogonal to version semantics. **The first generation does not even add
+`acquisition`** — wait until the manifest exists and the single-repo pilot works. **This is the
+"no skipping steps" discipline.**
 
 ---
 
-## 6. 压缩策略（初代）
+## 6. Compression policy (first generation)
 
-| 条件 | zstd | gzip | br | identity |
+| Condition | zstd | gzip | br | identity |
 |---|---|---|---|---|
-| `bytes ≥ 1 MiB` | **必出**（L19，分片 5MiB） | **必出**（-9，分片） | **不出**（留位） | **必出** |
-| `bytes < 1 MiB` | 可选 | 可选 | 不出 | 必出 |
-| 已压格式（`.gz/.zip/.whl/.woff2/.png`） | **不出**（白工 + 纯增体积） | 不出 | 不出 | 必出 |
+| `bytes ≥ 1 MiB` | **mandatory** (L19, 5MiB chunks) | **mandatory** (-9, chunked) | **none** (slot reserved) | **mandatory** |
+| `bytes < 1 MiB` | optional | optional | none | mandatory |
+| Already-compressed formats (`.gz/.zip/.whl/.woff2/.png`) | **none** (wasted work + pure size increase) | none | none | mandatory |
 
-**关于「极限压 gzip」**：实测 `-9` vs `-6` 只省 0.5%（20,899,276 vs 21,004,021），
-CPU 翻倍 ⇒ **-9 在 wasm 上是白工**，用 -6 即可。时间该花在 zstd L19（比 gzip 小 26.6%）。
+**On "maximum-compression gzip"**: measured, `-9` vs `-6` saves only 0.5% (20,899,276 vs
+21,004,021) at double the CPU => **-9 is wasted work on wasm**; `-6` suffices. Spend the time on
+zstd L19 (26.6% smaller than gzip).
 
 ---
 
-## 7. 站侧要提供的（全是标准 HTTP，无自创）
+## 7. What the site side must provide (all standard HTTP, nothing invented)
 
-| 项 | 值 | 说明 |
+| Item | Value | Note |
 |---|---|---|
-| 每块独立 URL | `GET <dir>/chunks/<codec>/NNN.<ext>` | 普通 GET |
-| `Content-Length` | 精确 | 用来判截断 |
-| `Content-Type` | `application/zstd` / `application/gzip` / 原始类型 | **不要**再用 `application/gzip` 冒充 wasm |
-| `Cache-Control` | `public, max-age=31536000, immutable` | ★「永不更新」靠这个，不靠"我们不改文件" |
-| CORS | `Access-Control-Allow-Origin: *`（若跨源） | 分片会被跨源拉 |
+| One URL per chunk | `GET <dir>/chunks/<codec>/NNN.<ext>` | plain GET |
+| `Content-Length` | exact | used to detect truncation |
+| `Content-Type` | `application/zstd` / `application/gzip` / the original type | **Do not** use `application/gzip` to masquerade as wasm |
+| `Cache-Control` | `public, max-age=31536000, immutable` | "never updates" depends on this, not on "we do not change files" |
+| CORS | `Access-Control-Allow-Origin: *` (if cross-origin) | chunks are fetched cross-origin |
 
-**不需要的**（初代明确不要求）：Range / `Accept-Ranges` / 条件请求 /
-`Digest` 头 / `multipart/byteranges`。**这些都是 v1 的自创，已砍。**
+**Not needed** (explicitly not required in the first generation): Range / `Accept-Ranges` /
+conditional requests / `Digest` header / `multipart/byteranges`. **All of these were v1's
+inventions and have been cut.**
 
-**一条已知现状（实测）**：当前边缘源站头是 `Cache-Control: public, max-age=0, must-revalidate`
-——**与「永不更新」相反**，必须由反代层覆盖成 `immutable`。这条不完全在生产者手里。
+**One known current state (measured)**: the live edge origin header is
+`Cache-Control: public, max-age=0, must-revalidate` — **the opposite of "never updates"** — and
+must be overridden to `immutable` by the reverse proxy. This is not entirely in the producer's
+hands.
 
 ---
 
-## 8. 谁产谁核
+## 8. Who produces, who verifies
 
-| 角色 | 做什么 | 不做什么 |
+| Role | Does | Does not |
 |---|---|---|
-| 各仓（生产者） | 产 `manifest.json` + 预分片；**自己算块 sha 与全局 sha** | 不定义别家字节 |
-| 站侧（分发） | 搬运 + `immutable` 缓存 + 索引 | **不另算 sha、不改 manifest** |
-| 消费端 | 按 `variants` 顺序试、并发拉、两道校验 | 不猜、不 Range、不自定义头 |
-| 本仓 | 内容语义 + 发布契约存副本 | 不产字节、不裁决分发实现 |
+| Each repo (producer) | Produces `manifest.json` + pre-sliced chunks; **computes its own chunk shas and the global sha** | Does not define other repos' bytes |
+| Site side (distribution) | Moves bytes + `immutable` cache + index | **Does not recompute shas, does not modify the manifest** |
+| Consumers | Tries `variants` in order, fetches concurrently, two checks | Does not guess, does not use Range, does not use custom headers |
+| This repo | Content semantics + keeps a copy of the release contract | Does not produce bytes, does not adjudicate the distribution implementation |
 
 ---
 
-## 9. 未决（我不擅定）
+## 9. Open questions (I do not decide unilaterally)
 
-| # | 问题 | 我的倾向 |
+| # | Question | My inclination |
 |---|---|---|
-| U1 | `chunkSize` 固定 5 MiB 还是按件可配 | **默认 5 MiB 可配**（拐点也受并发/块数影响） |
-| U2 | 并发默认值 8 还是按 `navigator.connection` 自适应 | **默认 8**，允许覆盖 |
-| U3 | 小件是否也分片 | **< 1 MiB 不分片**（并发无收益，反而多 N 个请求） |
-| U4 | `acquisition` 何时进内容契约 | **manifest 落地 + 单仓试点之后** |
-| U5 | br 何时开 | **初代之后**（用户已裁：不是不支持，是初代不开） |
+| U1 | Is `chunkSize` fixed at 5 MiB or configurable per artifact | **Default 5 MiB, configurable** (the knee is also affected by concurrency/chunk count) |
+| U2 | Default concurrency 8, or adaptive via `navigator.connection` | **Default 8**, allow override |
+| U3 | Should small artifacts also be chunked | **Do not chunk below 1 MiB** (no concurrency gain, just N extra requests) |
+| U4 | When does `acquisition` enter the content contract | **After the manifest lands + the single-repo pilot** |
+| U5 | When is br enabled | **After the first generation** (user already ruled: not unsupported, just not enabled in the first generation) |
 
 ---
 
-## 10. 落地顺序（不跳步，这是刹车）
+## 10. Rollout order (no skipping steps; this is the brake)
 
 ```
-1. 用户审定本 v2                       ← 现在
-2. manifest 生成器 + 校验器（I1–I7 自证）    ← 先有工具
-3. 单仓试点（建议 OM：已有 release + 两 asset）
-4. 站侧接入（immutable + 索引引用 manifest）
-5. UI/宿主 消费端（variants 遍历 + 并发 + 两道校验）
-6. 内容契约加 acquisition               ← 最后动语义
+1. User approves this v2                       <- now
+2. manifest generator + validator (I1–I7 self-proof)    <- tooling first
+3. Single-repo pilot (OM suggested: it already has a release + two assets)
+4. Site-side integration (immutable + the index references the manifest)
+5. UI/host consumers (variants iteration + concurrency + two checks)
+6. Content contract gains acquisition               <- touch semantics last
 ```
 
-**在 2–3 完成前，不推广任何压缩/分片策略。**
+**Until 2–3 are done, do not promote any compression/chunking policy.**
 
 ---
 
-## 11. 复跑方式
+## 11. How to reproduce
 
 ```bash
-# ① 浏览器解压能力
+# (1) Browser decompression capability
 #   /mnt/hdd/zcode-test/harness/probe-browser-codec.mjs
-#   ⇒ gzip/deflate OK；br/zstd NO
+#   => gzip/deflate OK; br/zstd NO
 
-# ② 预分片压缩率 + 耗时（见 §1.3）
-#   /tmp/prechunk.py（8 核并行）
+# (2) Pre-sliced compression ratio + timing (see §1.3)
+#   /tmp/prechunk.py (8 cores parallel)
 
-# ③ 并发收益（见 §1.4）
-#   /tmp/poc/slowserver.py 8931 1500000 0.08   # 每连接 1.5MB/s + 80ms RTT
+# (3) Concurrency gain (see §1.4)
+#   /tmp/poc/slowserver.py 8931 1500000 0.08   # 1.5MB/s per connection + 80ms RTT
 #   node /mnt/hdd/zcode-test/harness/poc-conc-real.mjs http://127.0.0.1:8931 zstd
-#   ⇒ conc=1 11519ms / conc=8 2354ms（4.89×拐点）
+#   => conc=1 11519ms / conc=8 2354ms (4.89x, the knee)
 
-# ④ 全链路 PoC（见 §1.5）
-#   /tmp/poc/make.py 生成 manifest + 三套分片
+# (4) Full-chain PoC (see §1.5)
+#   /tmp/poc/make.py generates the manifest + three chunk sets
 #   node /mnt/hdd/zcode-test/harness/poc-multichunk2.mjs http://127.0.0.1:8930 zstd 6
-#   ⇒ PASS，sha 8287589e…
+#   => PASS, sha 8287589e…
 
-# ⑤ fzstd 体积与安全边界（见 §1.2 / §1.6）
-gzip -9 -c /tmp/dec/package/umd/index.js | wc -c      # ⇒ 3860
+# (5) fzstd size and safety boundary (see §1.2 / §1.6)
+gzip -9 -c /tmp/dec/package/umd/index.js | wc -c      # => 3860
 grep -A3 "maximum backreference" /tmp/dec/package/README.md
 ```

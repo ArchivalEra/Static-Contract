@@ -1,97 +1,121 @@
-# Static-Contract · 静态分发契约
+# Static-Contract · Static Distribution Contract
 
-Octave 集群的**静态分发契约权威仓**：协议正典、工具链、悬案台账、元数据站都在这里。
+The **authoritative repository for the Octave cluster's static distribution contract**: protocol
+canon, toolchain, open-questions ledger, and the metadata site all live here.
 
-> **身份裁定（最最核心）：本仓只是契约维护者。站点不收录任何 release 件（0 字节托管）；
-> 所有的包，要么去 GitHub 拿（release 直链），要么走反代（集群边缘）。**
+> **Identity ruling (the core of the whole repository): this repository is a contract maintainer and
+> nothing else. The site hosts no release artifacts at all (zero-byte hosting); every package comes
+> from GitHub (a release direct link) or through a reverse proxy (the cluster edge).**
 
-**License：本仓（文档 / 工具 / 站点）以 [AGPL-3.0](LICENSE) 授权。收录的 release 不在本仓
-授权范围内 —— 每个 release 的许可归其发布方（见其 `manifest.json`）。**
+**License: this repository — documents, tools, and site — is [AGPL-3.0](LICENSE). Catalogued
+releases are not covered by that grant: each release follows the terms of its publisher (see its
+`manifest.json`).**
 
-> **一个 release = 一个不可变 tag = 一份 `manifest.json` + N 个扁平 asset。**
-> 名字只允许 GitHub 不会改写的字符（白名单）⇒ `manifest.file` 与真实 asset 名恒等。
-> 客户端只从 manifest 取名字，绝不拼 ⇒ 404 只有一种含义。一切字节走普通 GET。
+> **One release = one immutable tag = one `manifest.json` plus N flat assets.**
+> Names admit only characters GitHub will not rewrite (a whitelist), so `manifest.file` is always
+> identical to the real asset name. Clients take names from the manifest and never assemble them,
+> so a 404 has exactly one meaning. All bytes travel over plain GET.
 >
-> **目标：apt 的稳健 + HTTP 的简洁。**
+> **Goal: apt's robustness plus HTTP's simplicity.**
 
-## 正典
+## Canon
 
-**`specs/2026-10-30-release-contract-v4.md`** —— 契约定名 **v1**（manifest `schema: 2`）。
-四轮 design-it-twice 的收敛结果；v0–v3 与收纳审计是演化史，**被否方案的判据留在正典 §8，
-防止将来重开**。移交给本仓时正典从未试点，**不宣布稳定**。
+**`specs/2026-10-30-release-contract-v4.md`** — the contract is named **v1** (`schema: 2`; the
+license protocol v1.1 raises it to `schema: 3` and governs the license field). Four rounds of
+design-it-twice converged here; v0–v3 and the absorption audit are evolution history, and **the
+criteria that killed rejected designs stay in canon §8 so nobody re-opens them**. Handed over
+unpiloted, **not declared stable**.
 
-## 工具链（实测快照 2026-11-01，本仓实测）
+## Toolchain (measured snapshot 2026-11-03, this repository)
 
-| 工具 | 自证 | 说明 |
+| Tool | Self-test | What it does |
 |---|---|---|
-| `tools/make-manifest-v4.py` | **43 PASS / 0 fail** | 生成器：切块 → 每块独立压缩 → sha → manifest；白名单反向断言、失败即清场 |
-| `tools/check-release-v4.py` | **26 PASS / 0 fail** | 校验器：V1–V10 fail-closed；带 `--base` 时逐块对盘核 bytes+sha |
+| `tools/make-manifest-v4.py` | **43 PASS / 0 fail** | Generator: split into chunks → compress each chunk independently → sha → manifest; reverse-asserts the whitelist and cleans up on failure |
+| `tools/check-release-v4.py` | **37 PASS / 0 fail** | Validator: V1–V10 fail-closed; with `--base`, verifies bytes and sha per chunk against disk |
 
-复跑：`python3 tools/make-manifest-v4.py --selftest && python3 tools/check-release-v4.py --selftest`
+Reproduce: `python3 tools/make-manifest-v4.py --selftest && python3 tools/check-release-v4.py --selftest`
 
-## 目录地图
+## Directory map
 
-| 目录 | 内容 |
+| Directory | Contents |
 |---|---|
-| `specs/` | 契约正典（v4）+ v0–v3 演化史 + 收纳审计（自 Octave-Extra-Content 移交，原始材料未改）+ **v1.1 许可证协议定稿**（迁移中：extra-content 15/15 复核通过；LLVM 的 CI 卡在工具同步——判据 `check-release-v4.py --selftest` 现返回 35，需 37） |
-| `tools/` | v4 生成器与校验器（含 v1.1 许可不变量 V11，自证 37/37） |
-| `questions/` | 悬案台账（`05`：zstd vs gzip 在 EdgeOne 真链路的实测裁决） |
-| `STATE.md` | 活状态（Einfacht 生态格式：只写「现在是什么」，断言旁带复跑方式） |
-| `maintaince.md` | 方向与地图（维护边界 / 例行 / 红线） |
-| `site/` | 元数据站数据源：`sources.json`（订阅清单）+ `channels.json`（验收通道，**同时供页面渲染**）+ `catalogue.json`（兜底源，**必须为空**）+ `catalogue.live.json`（CI 写的派生件，gitignore，供闸门读）。页面形态照 he.net：纯 XHTML 1.1 + CSS，零 JS、零外链。**HTML 与 catalogue 公开字段全英文**（契约 .md 正文可中文，那是内容不是门面）+ **废弃契约必标** + **链接完整性**（H5 产物内 + H6 在线指纹判定（遍历各通道 files.json 全量，**按 owned 区分是否阻塞发布**）+ H7 catalogue base 可达性；`verify-channels.py` 同判据（外部通道未就绪只告警），支持 SC_HTTP_PROXY，防「200 伪装兜底页」）；**页面数据全自动**：自证数来自 `--selftest` 实测、通道表来自 `channels.json`、收录来自派生 catalogue、页脚带 `© 2026 ArchivalEra` |
-| `zreflect/` | Einfacht 事实系统平台（自 `vendor/Einfacht` `6e4e6e8`）+ 本仓数据层收集器；台账 `FACTS.json`（**别手改**，跑 `zreflect/facts.py`） |
-| `reflect-hooks/` | git 钩子与旋钮载体（装：`sh reflect-hooks/install.sh`；pre-commit 重渲染机器块 + commit 相位全部闸门） |
-| `mail/` | 跨仓邮件收件箱（规矩见 `mail/README.md`：只追加不删 / 编号递增 / 投递≠提交） |
-| `scripts/` | 零依赖脚本：`mail-read.py`（读信）、`build-site.py`（建站，自证 13/13）、`sync-catalogue.py`（catalogue 严格派生 G1–G7，自证 20/20）、`verify-channels.py`（线上验收，自证 9/9） |
-| `vendor/Einfacht` | 反幻觉事实系统套件（上游 `6e4e6e8`，快照 vendor） |
+| `specs/` | Contract canon (v4) + the v0–v3 evolution history + the absorption audit (handed over from Octave-Extra-Content, source material untouched) + **the finalized v1.1 license protocol** (migration in progress: extra-content re-verified 15/15 releases on `schema: 3`; on LLVM-wasm only the newest release carries `schema: 3`, older ones stay excluded until republished) |
+| `tools/` | v4 generator and validator (including the v1.1 license invariant V11; self-test 37/37) |
+| `questions/` | Open-questions ledger (`05`: zstd vs gzip measured on the real EdgeOne link) |
+| `STATE.md` | Live state (Einfacht format: states only what is true now, with the rerun command next to each assertion) |
+| `maintaince.md` | Direction and map (maintenance boundary / routine / red lines) |
+| `site/` | Metadata site source: `sources.json` (subscription list) + `channels.json` (acceptance channels, **also feeds page rendering**) + `catalogue.json` (fallback source, **must stay empty**) + `catalogue.live.json` (derived file written by CI, gitignored, read by gates). Page shape follows he.net: plain XHTML 1.1 + CSS, zero JS, zero external resources. **HTML, public catalogue fields, and published `.md` are English-only** + **deprecated contracts must be marked** + **link integrity** (H5 inside the artifact; H6 an online fingerprint check across every channel's full `files.json`, **with `owned` deciding whether a failure blocks publishing**; H7 catalogue base reachability — `verify-channels.py` applies the same criteria, only warns on external channels, honours `SC_HTTP_PROXY`, and defeats "200 at a fallback page"). **Page data is fully automatic**: self-test counts come from a live `--selftest`, the channel table from `channels.json`, listings from the derived catalogue, and the footer carries `© 2026 ArchivalEra` |
+| `zreflect/` | Einfacht fact-system platform (vendored from `vendor/Einfacht` at `6e4e6e8`) + this repository's data-layer collector; ledger `FACTS.json` (**do not hand-edit** — run `zreflect/facts.py`) |
+| `reflect-hooks/` | Git hooks and the knob carrier (install: `sh reflect-hooks/install.sh`; pre-commit re-renders machine blocks and runs every gate in the commit phase) |
+| `mail/` | Cross-repository mail inbox (rules in `mail/README.md`: append-only, numbers increase, delivery ≠ commit) |
+| `scripts/` | Zero-dependency scripts: `mail-read.py` (read mail), `build-site.py` (build the site, self-test 14/14), `sync-catalogue.py` (strict catalogue derivation G1–G7, self-test 21/21), `verify-channels.py` (online acceptance, self-test 10/10) |
+| `vendor/Einfacht` | Anti-hallucination fact-system suite (upstream `6e4e6e8`, vendored snapshot) |
 
-## 本仓在集群里的位置
+## Where this repository sits in the cluster
 
-| 仓 | 关系 |
+| Repository | Relationship |
 |---|---|
-| `Octave-Extra-Content` | 内容语义产地；本契约的前作者，现退为上游需求方 |
-| `Octave-Full-Wasm` | 宿主：引擎产物与构建事实（`octave.build.json`）；站点装配。**已接入 catalogue（`kind: engine`）** |
-| `Octave-UI` | 消费端：包管理器、下载管理 |
-| `OpenModelica-Full-Wasm` | 第二引擎产地。**已接入 catalogue（`kind: engine`）** |
-| `Shirone-personalized` | isui.ren 站侧：反代与边缘（EdgeOne） |
+| `Octave-Extra-Content` | Home of content semantics; the contract's original author, now the upstream requester |
+| `Octave-Full-Wasm` | Host: engine artifacts and build facts (`octave.build.json`); site assembly. **Catalogue-integrated (`kind: engine`)** |
+| `Octave-UI` | Consumer: package manager, download manager |
+| `OpenModelica-Full-Wasm` | Second engine source. **Catalogue-integrated (`kind: engine`)** |
+| `Shirone-personalized` | isui.ren side: reverse proxy and edge (EdgeOne) |
 
-## 纪律（继承自集群实测教训）
+## Discipline (inherited from lessons measured in the cluster)
 
-1. **「测不到」≠「不存在」**——任何「不存在」的结论，必须先有同类肯定用例证明探针有效。
-2. **数值/行为只认实测，复跑方式写在断言旁边**。写不出复跑方式的句子只能当历史读。
-3. **机器块是机器维护的**——`STATE.md` 文末块由 `zreflect/facts.py --render-doc` 渲染，
-   正文数字只许 `[[键名]]` 引用；闸门执行面读声明（`registry --run commit`），off 不是通过。
-   **白名单陷阱**：放行 `tools/*.py` 的规则会被 `*.pyc` 绕过——`__pycache__/` 必须显式忽略
-   （实测踩过：字节码进过提交）。
-4. **推送纪律**——`README.md` 随每批推送同批更新（pre-push 与 CI 同判据，单条目不退化）；
-   `--no-verify` 只能躲过本地，CI 是正面落点。
+1. **"Cannot measure it" is not "it does not exist"** — before concluding that something is absent,
+   you first need a positive control of the same kind proving the probe can detect presence.
+2. **Numbers and behaviour come only from measurement; put the rerun command next to the assertion.**
+   A sentence with no rerun command can only be read as history.
+3. **Machine blocks are maintained by machines** — the block at the end of `STATE.md` is rendered by
+   `zreflect/facts.py --render-doc`, and prose may reference numbers only as `[[key]]`. The execution
+   surface reads the declaration (`registry --run commit`); `off` is not a pass.
+   **Whitelist trap**: a rule that allows `tools/*.py` is defeated by `*.pyc` — `__pycache__/` must
+   be ignored explicitly (measured: bytecode once reached a commit).
+4. **Push discipline** — `README.md` is updated in the same batch as every push (pre-push and CI
+   apply the same criterion, and single-entry mode does not degrade it); `--no-verify` only hides it
+   locally, CI is the enforcement point that cannot be skipped.
 
-## 状态
+## Status
 
-**未试点**：没走完「生产者发 release → catalogue 收录 → 消费者改链接」全链。
-未决项：U1 codecs 顺序（悬案 05）、U2 chunkSize 按件可配、U3 asset 名 product 前缀、U4 其余仓接入排期。
+**Not yet piloted**: the full chain "producer publishes a release → catalogue lists it → consumer
+switches links" has never run end to end.
+Open items: U1 codecs order (question 05), U2 per-entry `chunkSize`, U3 asset name product prefix,
+U4 rollout schedule for the remaining repositories.
 
-**部署（三通道并行，一份产物）**：push main → `sync-deploy` workflow → **同一份 `site/dist`**：
-① orphan 强推 `deploy` 分支（CF Pages / EdgeOne Pages 监听）；
-② `actions/deploy-pages` 部署 GitHub Pages。
-通道：`https://archivalera.github.io/Static-Contract/` ·
-`https://static.mango-mesa.ccwu.cc/`（Cloudflare）·
-`https://isui.ren/static/`（EdgeOne，国内路径）。头语义（ETag/`304`/Content-Type）在站侧。
+**Deployment (three channels in parallel, one artifact)**: push `main` → the `sync-deploy`
+workflow → **the same `site/dist`**:
 
-**线上验收**：`scripts/verify-channels.py` 在部署后逐通道核对**本次产物指纹**
-（`STATIC-CONTRACT-BUILD <hash>` 写在 index.html 里）与 `catalogue.verified_at`。
-判据锚在产物本身，**不是通道之间是否一致**——全都停在旧产物时，一致性同样成立
-（2026-11-01 我正是这样误判过一次）。
+1. Force-push an orphan `deploy` branch (CF Pages / EdgeOne Pages listen on it);
+2. `actions/deploy-pages` deploys GitHub Pages.
 
-> ✅ **已修复（2026-11-01，shirone `mail/006`）**：EdgeOne 曾反代 Cloudflare 的
-> Worker 内联快照，不跟 deploy 分支（实测停在两轮之前）。现在三条线**独立部署**：
-> CF 运行期回源 raw deploy 分支、EO 由 CI 取 deploy 分支落到静态树，EO 响应头
-> `cf-ray/nel/report-to` 计数为 0。三通道指纹与 catalogue sha 均等于 deploy 分支。
-> **deploy 分支是唯一制品、也是消费方的正确入口**——不要跑 `build-site.py`
-> （它需要已派生的 catalogue，单独跑只会走空兜底）。
-> **EO 的更新由我方 `sync-deploy` 主动 dispatch 他们的 workflow**（我推 deploy 分支
-> 不会自动触发他们跑）。需配 `HEART_DISPATCH_TOKEN`；未配时该步明说跳过、EO 停在上一版。
-CI：`gates` workflow 跑与本地钩子同一判据（事实块对账 + 名录全闸门 + 模块自证），
-环境侧显式装 `zstandard`（生成器自证的仪器）并 source `reflect-hooks/Einfacht.env`（旋钮来源）。
+Channels: `https://archivalera.github.io/Static-Contract/` ·
+`https://static.mango-mesa.ccwu.cc/` (Cloudflare) ·
+`https://isui.ren/static/` (EdgeOne, China-facing path). Header semantics (ETag / `304` /
+Content-Type) live on the site side.
 
-现状与试点验收判据：`STATE.md`；方向、边界与例行：`maintaince.md`。
+**Online acceptance**: `scripts/verify-channels.py` checks, after deployment, each channel against
+**this build's artifact fingerprint** (`STATIC-CONTRACT-BUILD <hash>` written into `index.html`) and
+`catalogue.verified_at`. The criterion anchors to the artifact itself, **not to whether the channels
+agree with each other** — when every channel is stuck on an old artifact, agreement holds just as
+well (that is exactly how I misjudged it once on 2026-11-01).
+
+> **Fixed (2026-11-01, shirone `mail/006`)**: EdgeOne used to reverse-proxy Cloudflare's Worker
+> inline snapshot and did not follow the `deploy` branch (measured: two builds behind). The three
+> legs now deploy independently: CF reads the raw `deploy` branch at runtime, and CI drops the
+> `deploy` branch into EO's static tree; the count of `cf-ray/nel/report-to` in EO response headers
+> is 0. Fingerprints on all three channels and the catalogue sha all equal the `deploy` branch.
+> **The `deploy` branch is the only artifact and the correct entry point for consumers** — do not run
+> `build-site.py` (it needs an already-derived catalogue; run on its own it only produces the empty
+> fallback).
+> **EO updates are triggered by our `sync-deploy` dispatching their workflow** (pushing the `deploy`
+> branch does not trigger them). This needs `HEART_DISPATCH_TOKEN`; without it the step says so and
+> skips, and EO stays on the previous build.
+
+CI: the `gates` workflow runs the same criteria as the local hooks (fact-block reconciliation + the
+full gate roster + module self-tests); the environment explicitly installs `zstandard` (the
+instrument the generator's self-test needs) and sources `reflect-hooks/Einfacht.env` (the source of
+the knobs).
+
+Current state and pilot acceptance criteria: `STATE.md`; direction, boundaries, and routine:
+`maintaince.md`.

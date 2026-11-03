@@ -1,194 +1,222 @@
-# 发布契约（Release Contract）· v1
+# Release Contract · v1
 
-> ## ⛔ DEPRECATED — 历史文档，不是权威（2026-11-02 标注）
+> ## DEPRECATED — historical, not authoritative (marked 2026-11-02)
 >
-> 本文**从未投递、从未进任何 schema、从未推广**，已被后续版本取代。
-> **现行权威 = `specs/2026-10-30-release-contract-v4.md`（V1–V10 基础条款）
-> + `specs/2026-11-01-release-contract-v1.1-license.md`（V11 许可，schema 3）**。
-> 保留本文的唯一理由是**被否方案的判据**（防止将来重开）——不要照它实现。
+> Never delivered, never entered any schema, never promoted. Superseded.
+> **Current authority: `2026-10-30-release-contract-v4.md` (V1–V10) plus
+> `2026-11-01-release-contract-v1.1-license.md` (V11, schema 3).**
+> Kept only for the rejection criteria (so they are not re-opened). Do not implement from it.
 
-> **状态**：草案，供用户审。**未投递、未进 schema、未推广。**
-> **v0 → v1 的改动原因**：v0 在手搓 manifest 字段，而这类语义 **HTTP 已经标准化**。
-> v1 的原则是：**能由 HTTP 头表达的，绝不进 manifest；manifest 只补标准表达不了的那一小块。**
+> **Status**: draft, for user review. **Not delivered, not in any schema, not promoted.**
+> **Why v0 -> v1 changed**: v0 was hand-rolling manifest fields, but this class of semantics
+> **is already standardized by HTTP**. v1's principle: **anything expressible by an HTTP header
+> never goes into the manifest; the manifest only fills the small gap the standard cannot
+> express.**
 >
-> **用户给的目标**：「给静态站一个**永远不需要更新**且**高度符合 HTTP 标准**的协议」。
-> 本文每条设计都对着这两个词验：**永不更新** = 身份不可变 + 自描述 + 无版本协商；
-> **符合标准** = 用 RFC 已有的机制，不自创。
+> **The user's goal**: "give the static site a protocol that **never needs updating** and
+> **conforms closely to HTTP standards**". Every design point below is checked against those two
+> words: **never updates** = immutable identity + self-description + no version negotiation;
+> **conforms to standards** = use mechanisms the RFCs already have, invent nothing.
 
 ---
 
-## 0. 先认前一批的错（这是本设计的起点）
+## 0. Own the previous batch's mistakes first (this is where the design starts)
 
-我 `109`/`110`/`113` 在没有 manifest 的情况下推广了 sidecar 压缩。三个真问题：
+I promoted sidecar compression in `109`/`110`/`113` without a manifest. Three real problems:
 
-1. **没有单一身份对象**：`.wasm` / `.wasm.gz` / `.wasm.br` 三份字节，谁是谁、`Content-Encoding`
-   该是什么、消费端拿到哪一层——无处声明；
-2. **与「从源码构建契约」冲突**（`STATE.md:145` Q3：`ways` 是派生不是记录，不引入 `flavor`）：
-   sidecar 是第三种取得路径，不纳入就是旁路；
-3. **与现有 Range 协议冲突**：想乱序多线程拉 br/gzip，但没说清 Range 打哪层、怎么切、怎么校验。
+1. **No single identity object**: three byte streams `.wasm` / `.wasm.gz` / `.wasm.br` — which is
+   which, what `Content-Encoding` should be, which layer the consumer gets — nowhere declared;
+2. **Conflicts with the "build-from-source contract"** (`STATE.md:145` Q3: `ways` is derived, not
+   recorded; do not introduce `flavor`): a sidecar is a third acquisition path; left out, it is a
+   bypass;
+3. **Conflicts with the existing Range protocol**: we want out-of-order multi-threaded fetching of
+   br/gzip, but nobody says which layer Range applies to, how to slice, or how to verify.
 
-⇒ 必须先有**一个**发布契约收口。
+=> There must first be **one** release contract to close this.
 
 ---
 
-## 1. 实测事实（2026-10-30，edge 全量探测）
+## 1. Measured facts (2026-10-30, full edge probe)
 
-### 1.1 Range 只在「已压缩 sidecar」上工作
+### 1.1 Range works only on "already-compressed sidecars"
 
-| 请求 | 结果 |
+| Request | Result |
 |---|---|
-| `octave.wasm` + `Range: bytes=0-1023` | **200 OK**（`Accept-Ranges: none`，不支持） |
-| `….wasm.gz` + `Range: bytes=0-1023` | **206**，1024 B，`Content-Range: bytes 0-1023/20895435` |
-| `….wasm.gz` + `Range: bytes=1000000-1001023` | **206**，1024 B（内容不同 = 真分片） |
-| `….wasm.gz` + `Range: bytes=-1024`（后缀） | **206**，1024 B ✅ |
-| `….wasm.gz` + `Range: bytes=20893000-`（开放） | **206**，2435 B ✅ |
-| `….wasm.gz` + `Range: bytes=0-99,200-299`（多段） | **200 全体** ❌ 不支持 multipart |
-| `….wasm.gz` + `Range: bytes=99999999-…`（越界） | **416** ✅ |
-| `….wasm.gz` + `Range: bytes=20895435-`（起始=尾） | **416** ✅ |
+| `octave.wasm` + `Range: bytes=0-1023` | **200 OK** (`Accept-Ranges: none`, unsupported) |
+| `….wasm.gz` + `Range: bytes=0-1023` | **206**, 1024 B, `Content-Range: bytes 0-1023/20895435` |
+| `….wasm.gz` + `Range: bytes=1000000-1001023` | **206**, 1024 B (different content = real chunking) |
+| `….wasm.gz` + `Range: bytes=-1024` (suffix) | **206**, 1024 B (correct) |
+| `….wasm.gz` + `Range: bytes=20893000-` (open) | **206**, 2435 B (correct) |
+| `….wasm.gz` + `Range: bytes=0-99,200-299` (multi-range) | **200 whole body** (fails) — multipart unsupported |
+| `….wasm.gz` + `Range: bytes=99999999-…` (out of bounds) | **416** (correct) |
+| `….wasm.gz` + `Range: bytes=20895435-` (start = end) | **416** (correct) |
 
-**⇒ Range 支持面 = 单段 Range（含后缀与开放形式），含正确的 `Content-Range` 与 `416`。
-不支持多段（`multipart/byteranges`）。这条直接决定「分片必须一个一个拉、不能批量」**。
+**=> Range support surface = single-range (including suffix and open forms), with correct
+`Content-Range` and `416`. Multi-range (`multipart/byteranges`) unsupported. This directly
+dictates "chunks must be fetched one at a time, not in batches".**
 
-### 1.2 条件请求**不可依赖**（关键反直觉）
+### 1.2 Conditional requests **cannot be relied on** (the key counterintuitive finding)
 
-| 请求 | 期望（RFC） | 实测 |
+| Request | Expected (RFC) | Measured |
 |---|---|---|
-| `Range` + `If-Range: <正确 ETag>` | 206 | **206** ✅ |
-| `Range` + `If-Range: <错误 ETag>` | **200 全体**（RFC 9110 §13.1.5） | **206**（**不守标准**）❌ |
-| `If-None-Match: <正确 ETag>` | **304** | **200** ❌ |
+| `Range` + `If-Range: <correct ETag>` | 206 | **206** (correct) |
+| `Range` + `If-Range: <wrong ETag>` | **200 whole body** (RFC 9110 §13.1.5) | **206** (does not follow the standard) — fails |
+| `If-None-Match: <correct ETag>` | **304** | **200** — fails |
 
-**⇒ 不能用 `If-Range` 做「分片与整包版本一致性」的守卫；不能用 `If-None-Match` 省流量。
-这两条必须写进契约当「已知边界」，否则消费端会写出看似正确、实际无保护的重试逻辑。**
+**=> You cannot use `If-Range` as a guard for "chunk and whole-package version consistency";
+you cannot use `If-None-Match` to save traffic. Both must be written into the contract as "known
+boundaries", otherwise consumers will write retry logic that looks correct but protects
+nothing.**
 
-### 1.3 ETag / Last-Modified 的可用性
+### 1.3 Availability of ETag / Last-Modified
 
 ```
-ETag: "6ae2ff51-13ed6cb"        ← 跨请求恒定（3/3 次相同）
-  前缀 6ae2ff51 = 1793261393     ← mtime epoch（= Last-Modified）
-  后缀 13ed6cb  = 20895435       ← ★ 精确等于 Content-Length
+ETag: "6ae2ff51-13ed6cb"        <- constant across requests (identical 3/3 times)
+  prefix 6ae2ff51 = 1793261393     <- mtime epoch (= Last-Modified)
+  suffix 13ed6cb  = 20895435       <- exactly equal to Content-Length
 Last-Modified: Thu, 29 Oct 2026 08:09:53 GMT
-Accept-Ranges: bytes            ← 仅 sidecar 有；原始件是 none
+Accept-Ranges: bytes            <- only on the sidecar; the raw artifact says none
 ```
 
-**⇒ ETag 是「mtime + size」派生的弱校验器**（`W/"<mtime>-<size>"` 是 GitHub/Fastly 家族约定），
-**不是内容哈希**。它**能**用于「同一 URL 的两片是否来自同一版本」的**弱**判定
-（size 与 mtime 都稳定），但**不能**替代 sha256 的 fail-closed。
-⇒ 契约里：**ETag 只作诊断/日志，不作安全判据。**
+**=> The ETag is a weak validator derived from "mtime + size"** (`W/"<mtime>-<size>"` is the
+GitHub/Fastly family convention), **not a content hash**. It **can** be used for a **weak**
+judgement of "do two chunks of the same URL come from the same version" (both size and mtime are
+stable), but **cannot** replace sha256's fail-closed guarantee.
+=> In the contract: **ETag is for diagnostics/logs only, never a security criterion.**
 
-### 1.4 没有的（如实记）
+### 1.4 What is absent (recorded honestly)
 
-- **无任何 `Digest` / `Content-Digest` 头**（RFC 9530）⇒ 标准的内容完整性头不可用，
-  必须由 manifest 携带 sha256。**这是 manifest 存在的第一理由**；
-- **zstd 不支持**：`Accept-Encoding: zstd` 返回 200 + 原始件（74,579,404 B），
-  `.wasm.zst` sidecar 404 ⇒ 当前编码面 = `identity` / `gzip` / `br` 三种。
-- **`:status` 200 时 `Content-Type: application/gzip`**（sidecar 直接取时）——
-  **这是坑**：消费端若直接 `fetch('x.wasm.gz')` 会拿到压缩字节却以为拿到 wasm。
+- **No `Digest` / `Content-Digest` header at all** (RFC 9530) => the standard content-integrity
+  header is unavailable, so the manifest must carry sha256. **This is the first reason the
+  manifest exists**;
+- **zstd unsupported**: `Accept-Encoding: zstd` returns 200 + the raw artifact (74,579,404 B),
+  and a `.wasm.zst` sidecar 404s => the current encoding surface = `identity` / `gzip` / `br`.
+- **`Content-Type: application/gzip` on a `:status` 200** (when fetching the sidecar directly) —
+  **this is a trap**: a consumer that does `fetch('x.wasm.gz')` directly gets compressed bytes
+  while thinking it got wasm.
 
-### 1.5 乱序分片 + 还原全链路已验证
+### 1.5 Out-of-order chunking + reconstruction verified end to end
 
-对 `….wasm.gz`（20,895,435 B）按 5 MiB 切片，**逆序**拉取后按序拼接：
+For `….wasm.gz` (20,895,435 B), sliced at 5 MiB, fetched **in reverse order**, then concatenated
+in order:
 
 ```
-chunk3 5,166,795 B / chunk2 5,242,880 B / chunk1 5,242,880 B / chunk0 5,242,880 B  (全 206)
-merged = 20,895,435 B          ← 与 Content-Length 精确相等
-gunzip → sha256 = 8287589ebdb53b4cc37c337c2ae88f798d8889f7  ← 与产品 sha 逐字一致
+chunk3 5,166,795 B / chunk2 5,242,880 B / chunk1 5,242,880 B / chunk0 5,242,880 B  (all 206)
+merged = 20,895,435 B          <- exactly equal to Content-Length
+gunzip -> sha256 = 8287589ebdb53b4cc37c337c2ae88f798d8889f7  <- byte-for-byte equal to the product sha
 ```
 
-⇒ **协议可行，已端到端验证。** 但注意 §1.1：多段 Range 不支持，所以这是 **N 个独立请求**，
-不是一次 multipart。
+=> **The protocol is feasible, verified end to end.** But note §1.1: multi-range is unsupported,
+so this is **N independent requests**, not one multipart.
 
-### 1.6 站管旧结论已过期（必须更正，否则两方永久各测各的）
+### 1.6 The site admin's old conclusion is stale (must be corrected, or the two sides measure different things forever)
 
-`SITE-ADMIN-REQUEST.md:125`：
+`SITE-ADMIN-REQUEST.md:125`:
 
-> 申请三（Range）——**接受现实，撤回申请**：实测「206 头声称分片却吐解压全体，头体不一致」。
+> Request three (Range) — **accept reality, withdraw the request**: measured "the 206 header
+> claims a chunk but emits the whole decompressed body — header/body mismatch".
 
-**那次测的应是原始 `.wasm`**（边缘在解压路径上头体不一致）。**在 sidecar `.gz` 上是真 206**
-（本次实测：字节精确、`Content-Range` 正确、拼接还原后 sha 一致）。
+**That measurement was presumably against the raw `.wasm`** (the edge is inconsistent in headers
+on the decompression path). **On the sidecar `.gz` it is a true 206** (this round: byte-exact,
+correct `Content-Range`, sha matches after reconstruction).
 
-⇒ **契约必须写明「Range 的测量面」**：`(URL, 是否 identity, 是否有 Content-Encoding)` 三元组
-不同，结论完全不同。**这是本次最大的方法论收获**——也是我给 UI 立的「测不到 ≠ 不存在」
-纪律的又一个实例：两个团队各测一半、各写结论、永久冲突。
+=> **The contract must state the "measurement surface of Range"**: a different
+`(URL, identity or not, Content-Encoding present or not)` triple gives a completely different
+conclusion. **This is the biggest methodological gain of this round** — and another instance of
+the "unmeasurable ≠ nonexistent" discipline I imposed on the UI: two teams each measure half,
+each write a conclusion, and conflict forever.
 
-### 1.7 ★ 缓存现状：「永不更新」在源站头上**是反的**（必须由发布契约纠正）
+### 1.7 Cache status: "never updates" is **backwards** on the origin (the release contract must correct it)
 
-实测三次连续请求同一 sidecar：
+Measuring three consecutive requests to the same sidecar:
 
 ```
 Age: 565   X-Served-By: cache-bur-kbur8200088-BUR  X-Cache: HIT
-Age: 0     X-Served-By: cache-hkg-vhhh8650073-HKG  X-Cache: HIT   ← 换节点 = 重新计数
+Age: 0     X-Served-By: cache-hkg-vhhh8650073-HKG  X-Cache: HIT   <- different node = counter restarts
 Age: 566   X-Served-By: cache-bur-kbur8200114-BUR  X-Cache: HIT
 ```
 
-**两条事实**：
+**Two facts**:
 
-1. **多节点独立缓存**（LAX/HKG/BUR 各自计数）⇒ 命中率取决于请求落在哪个节点。
-   这与 `080` 信记录的「EdgeOne 多节点各自缓存（Age 序列互异）」完全一致；
-2. **源站头是 `Cache-Control: public, max-age=0, must-revalidate`** ⇒ 源站在主动
-   **要求每次回源验证**。这和「永不更新」正相反。
+1. **Multiple nodes cache independently** (LAX/HKG/BUR each keep their own counter) => the hit
+   rate depends on which node the request lands on. This matches exactly what letter `080`
+   recorded: "EdgeOne caches per node (Age sequences differ from each other)";
+2. **The origin header is `Cache-Control: public, max-age=0, must-revalidate`** => the origin is
+   actively **demanding revalidation on every request**. That is the exact opposite of "never
+   updates".
 
-**⇒ 「永不更新」不能靠"我们不改文件"实现，必须靠头**：
-发布目录（`<repo>/<tag>/`）必须由产出方设成
-`Cache-Control: public, max-age=31536000, immutable`。
-**但这条不完全在生产者手里**——实测 `.gz` 的 `Cache-Control` 来自源站（GitHub Pages
-的默认策略），而 `.wasm`（未压）却是 `max-age=3600, s-maxage=86400`。
-⇒ **同一个目录下两层字节的缓存策略不一致**，这是发布契约必须纠正的第一件事。
+**=> "Never updates" cannot be achieved by "we do not change files"; it must be achieved by
+headers**: the release directory (`<repo>/<tag>/`) must be set by the producer to
+`Cache-Control: public, max-age=31536000, immutable`.
+**But this is not entirely in the producer's hands** — measured: the `.gz` `Cache-Control` comes
+from the origin (GitHub Pages' default policy), whereas the `.wasm` (uncompressed) gets
+`max-age=3600, s-maxage=86400`.
+=> **The cache policy differs between the two byte layers in the same directory**; this is the
+first thing the release contract must correct.
 
-**给站侧的最小要求**（不改源站也能做）：反代层对 `/<repo>/<tag>/` **覆盖**
-`Cache-Control: public, max-age=31536000, immutable`。判据：
+**The minimal requirement on the site side** (doable without touching the origin): the reverse
+proxy **overrides** `Cache-Control: public, max-age=31536000, immutable` for `/<repo>/<tag>/`.
+Criterion:
 
 ```bash
 curl -sI https://<static-host>/<repo>/<tag>/x.wasm.gz | grep -i cache-control
-# ⇒ public, max-age=31536000, immutable
+# => public, max-age=31536000, immutable
 ```
 
-### 1.8 多节点缓存对分片的影响（这条决定并发策略）
+### 1.8 How multi-node caching affects chunking (this decides the concurrency policy)
 
-既然 `Age` 跨节点互异，**同一个文件的 N 个分片请求可能落到 N 个不同节点**：
+Since `Age` differs across nodes, **N chunk requests for the same file may land on N different
+nodes**:
 
-- **好的一面**：不同节点各自有全量体时，并发分片 = 并发命中不同缓存，吞吐叠加；
-- **坏的一面**：若某节点**没有**该文件缓存，它的首次请求要回源（实测 `X-Cache: MISS`
-  时 `X-Timer ... VE3845` = **回源 3.8 秒**）⇒ 该分片慢 3.8s，成为整个并发的短板。
+- **The good side**: when different nodes each hold the full body, concurrent chunking =
+  concurrent hits on different caches, throughput adds up;
+- **The bad side**: if a node does **not** have the file cached, its first request goes to the
+  origin (measured: on `X-Cache: MISS`, `X-Timer ... VE3845` = **3.8 seconds to origin**) => that
+  chunk is 3.8s slower and becomes the straggler for the whole concurrent set.
 
-⇒ **契约对消费端的要求**：分片**必须容忍单点慢**——设超时 + 重试（重试会被粘到
-另一个节点，这是 EdgeOne 拓扑给的红利）。**不要**因为一个分片慢就整体重来。
+=> **Requirement on consumers**: chunks **must tolerate a single slow point** — set timeouts +
+retries (a retry gets stuck to another node, a dividend of EdgeOne's topology). **Do not** restart
+everything because one chunk is slow.
 
 ---
 
-## 2. 设计原则（对着用户那两个词）
+## 2. Design principles (checked against the user's two words)
 
-| 原则 | 怎么做 | 为什么 |
+| Principle | How | Why |
 |---|---|---|
-| **永不更新**（P1） | 身份 = `sha256`；URL 一旦发布不可变；**无版本协商、无能力发现** | 任何"协商"都要双方同步演进 = 要更新 |
-| **纯标准**（P2） | 分片用 RFC 9110 `Range`/`Content-Range`/`416`；编码用 RFC 9110 `Content-Encoding`；缓存用 `Cache-Control: immutable` | 浏览器/代理/CDN 全都懂，不用教 |
-| **manifest 只补标准不表达的**（P3） | HTTP 有 `Content-Encoding`、`Content-Length`、`Accept-Ranges` —— **这些不进 manifest**；HTTP **没有** sha256、没有"这层是哪个编码的字节"、没有"Range 打哪层" —— **只有这些进** | manifest 越小，越不会变成第二真相 |
-| **失败要响**（P4） | 两道 sha 校验（编码层 / 原始层）；`416`/`404`/sha 不符都当硬错 | 有前科：装成功报失败（D12）、装配缺陷伪装降级（D11） |
-| **可降级但可观测**（P5） | br → gzip → identity 逐级回落，**回落原因必须可读** | 老浏览器/坏代理存在；但静默降级会让"为什么慢"永远查不出 |
+| **Never updates** (P1) | Identity = `sha256`; a URL is immutable once published; **no version negotiation, no capability discovery** | Any "negotiation" requires both sides to evolve together = requires updating |
+| **Pure standard** (P2) | Slicing uses RFC 9110 `Range`/`Content-Range`/`416`; encoding uses RFC 9110 `Content-Encoding`; caching uses `Cache-Control: immutable` | Browsers/proxies/CDNs all understand it; nothing to teach |
+| **The manifest only fills gaps the standard does not express** (P3) | HTTP has `Content-Encoding`, `Content-Length`, `Accept-Ranges` — **these do not go into the manifest**; HTTP **lacks** sha256, "which encoding these bytes belong to", and "which layer Range applies to" — **only these go in** | The smaller the manifest, the less it can become a second truth |
+| **Failures must be loud** (P4) | Two sha checks (encoding layer / raw layer); `416`/`404`/sha mismatch are all hard errors | Precedent: success reported as failure (D12), assembly defects disguised as degradation (D11) |
+| **Degradable but observable** (P5) | br -> gzip -> identity step down, **with a readable reason for the fallback** | Old browsers and broken proxies exist; but silent degradation makes "why is it slow" unanswerable forever |
 
 ---
 
-## 3. 协议本体
+## 3. The protocol itself
 
-### 3.1 一句话
+### 3.1 One sentence
 
-> **一个 release = 一个不可变目录 + 一份 manifest.json。**
-> manifest 只写「HTTP 表达不了的那几件」：sha256、编码层的字节身份、Range 的测量面。
-> 其余一切（类型、长度、Range 能力、缓存策略）**都由 HTTP 头自描述**。
+> **One release = one immutable directory + one manifest.json.**
+> The manifest records only "the few things HTTP cannot express": sha256, the byte identity of
+> each encoding layer, and the measurement surface of Range.
+> Everything else (type, length, Range capability, cache policy) **is self-described by HTTP
+> headers**.
 
-### 3.2 目录形状（静态站，永不更新）
+### 3.2 Directory shape (static site, never updates)
 
 ```
 <repo>/<tag>/
-  manifest.json                 ← 唯一元数据入口（不可变）
-  <asset>                       ← identity 原始件
-  <asset>.gz                    ← gzip sidecar（5.0s/74.5MB）
-  <asset>.br                    ← brotli q11 sidecar（148.5s/74.5MB）
+  manifest.json                 <- the single metadata entry (immutable)
+  <asset>                       <- identity raw artifact
+  <asset>.gz                    <- gzip sidecar (5.0s/74.5MB)
+  <asset>.br                    <- brotli q11 sidecar (148.5s/74.5MB)
 ```
 
-**"永不更新"的强制**：目录名含 `tag`，`tag` 一旦发布不再变。
-新版本 = 新 `tag`（新目录）。**不提供 `latest` 别名** —— 那是永续更新的入口。
+**Enforcing "never updates"**: the directory name contains `tag`, and `tag` never changes once
+published. A new version = a new `tag` (new directory). **No `latest` alias is provided** — that
+is the entry point for perpetual updating.
 
-### 3.3 manifest（最小形状）
+### 3.3 manifest (minimal shape)
 
 ```json
 {
@@ -202,8 +230,8 @@ curl -sI https://<static-host>/<repo>/<tag>/x.wasm.gz | grep -i cache-control
       "bytes": 74579404,
       "sha256": "8287589e…b001",
       "encodings": {
-        "gzip": { "bytes": 20895435, "sha256": "<gz 字节的 sha>" },
-        "br":   { "bytes": 13053436, "sha256": "<br 字节的 sha>" }
+        "gzip": { "bytes": 20895435, "sha256": "<sha of the gz bytes>" },
+        "br":   { "bytes": 13053436, "sha256": "<sha of the br bytes>" }
       },
       "range": { "basis": "encoded", "granularity": 5242880 }
     }
@@ -211,179 +239,188 @@ curl -sI https://<static-host>/<repo>/<tag>/x.wasm.gz | grep -i cache-control
 }
 ```
 
-**逐字段的必要性论证（deletion test：删了它，谁受损？）**
+**Necessity argument per field (deletion test: delete it, who is hurt?)**
 
-| 字段 | 删了会怎样 | 判定 |
+| Field | What happens if deleted | Verdict |
 |---|---|---|
-| `bytes` + `sha256` | 边缘**无 Digest 头**（§1.4）⇒ 消费端**没有任何办法**验证完整性 | **必须留** |
-| `encodings.*.{bytes,sha256}` | 分片拼完后无法验证拼对了（`Content-Range` 只给范围，不给内容身份） | **必须留** |
-| `encodings`（存在性本身） | 消费端只能靠**试**（先试 br，404 再试 gzip…）= N 次往返、且"404"与"真没有"分不开 | **必须留** |
-| `range.basis` | 实测原始件不支持 Range、sidecar 支持（§1.1）⇒ 不写就可能对着原始件发 Range，得 200 全体还以为是分片 | **必须留** |
-| `range.granularity` | 5 MiB 是"边缘极其迅速"的经验值；不写就得各端各猜 | **留（可缺省 5 MiB）** |
-| `contentType` | 侧车直接取时 `Content-Type: application/gzip`（§1.4）⇒ 消费端会误判 | **留** |
-| ~~`url`~~ | **删**：URL = `<dir>/<asset>` 与 `<dir>/<asset>.<enc>`，**可由 id+name 推导** | **删（派生而非记录）** |
-| ~~`contentEncoding`~~ | **删**：`gzip`/`br` 就是 HTTP 的编码名，重复写 = 第二真相 | **删** |
-| ~~`range.supported`~~ | **删**：`Accept-Ranges` 头已经在说；`basis` 已隐含"支持" | **删** |
-| ~~`immutable`~~ | **删**：`Cache-Control: immutable` 是 HTTP 的事 | **删** |
-| ~~`firstSeen`~~ | **删**：见 P3；用 `Last-Modified`/`ETag` 诊断即可 | **删** |
-| ~~`form`~~ | **删**：`form`（pkg/tree/file…）是**内容契约**的轴，不属于字节身份 | **删（归内容契约）** |
+| `bytes` + `sha256` | The edge has **no Digest header** (§1.4) => consumers have **no way** to verify integrity | **must stay** |
+| `encodings.*.{bytes,sha256}` | After chunk assembly there is no way to verify it was assembled correctly (`Content-Range` gives the range, not the content identity) | **must stay** |
+| `encodings` (its existence) | Consumers can only **try** (try br, on 404 try gzip…) = N round trips, and "404" is indistinguishable from "genuinely absent" | **must stay** |
+| `range.basis` | Measured: the raw artifact does not support Range, the sidecar does (§1.1) => without it, consumers may send Range at the raw artifact, get a 200 whole body, and think it was chunked | **must stay** |
+| `range.granularity` | 5 MiB is the empirical "extremely fast at the edge" value; without it every client guesses | **stay (default 5 MiB)** |
+| `contentType` | When the sidecar is fetched directly, `Content-Type: application/gzip` (§1.4) => consumers misjudge | **stay** |
+| ~~`url`~~ | **delete**: URL = `<dir>/<asset>` or `<dir>/<asset>.<enc>`, **derivable from id+name** | **delete (derived, not recorded)** |
+| ~~`contentEncoding`~~ | **delete**: `gzip`/`br` are just HTTP encoding names; repeating them = a second truth | **delete** |
+| ~~`range.supported`~~ | **delete**: the `Accept-Ranges` header already says it; `basis` already implies "supported" | **delete** |
+| ~~`immutable`~~ | **delete**: `Cache-Control: immutable` is HTTP's business | **delete** |
+| ~~`firstSeen`~~ | **delete**: see P3; diagnosing with `Last-Modified`/`ETag` is enough | **delete** |
+| ~~`form`~~ | **delete**: `form` (pkg/tree/file…) is an axis of the **content contract**, not of byte identity | **delete (belongs to the content contract)** |
 
-**⇒ 从 v0 的 14 个字段砍到 6 个。** 砍掉的每一个都是「HTTP 已经说了」或「位置放错了」。
+**=> Cut from 14 fields in v0 to 6.** Every cut is either "HTTP already says it" or "wrong place".
 
-### 3.4 五条不变量（校验器逐条判，fail-closed）
+### 3.4 Five invariants (checked one by one by the validator, fail-closed)
 
-| # | 不变量 | 反例（必须报红） |
+| # | Invariant | Counterexample (must go red) |
 |---|---|---|
-| **I1** | `encodings.<enc>.sha256` 是**该编码字节**的 sha，不是原始字节的 | 写了原始 sha ⇒ 消费端校验必失败 |
-| **I2** | 压缩层**可复算**：`gunzip(enc bytes)` / `brotli_decode(enc bytes)` 必须得到 `bytes` 长度且 sha = `sha256` | 声明一个没真压的 sidecar 骗体积检查 |
-| **I3** | `range.basis ∈ {encoded, identity}`，**且声明 `encoded` 时 `encodings` 必须非空** | 声明 encoded 但没有任何编码层 = 空指 |
-| **I4** | `granularity ≤ 2^31-1` 且 `> 0` | 分片号要能写进 `Range: bytes=a-b` |
-| **I5** | **同一 `id` 下同名 asset 的 `sha256` 永不变**；变了 = 必须换 `id`（新 tag） | OM 先例：`v0.1.0-wasm32` **追加** asset 合法（新名字），**覆盖**同名非法 |
+| **I1** | `encodings.<enc>.sha256` is the sha of **that encoding's bytes**, not of the raw bytes | Writing the raw sha => consumer verification always fails |
+| **I2** | The compressed layer is **recomputable**: `gunzip(enc bytes)` / `brotli_decode(enc bytes)` must yield the length `bytes` and sha = `sha256` | Declaring an uncompressed sidecar to fool the size check |
+| **I3** | `range.basis ∈ {encoded, identity}`, **and declaring `encoded` requires `encodings` to be non-empty** | Declaring encoded with no encoding layer at all = a dangling reference |
+| **I4** | `granularity ≤ 2^31-1` and `> 0` | The chunk index must fit in `Range: bytes=a-b` |
+| **I5** | **Under the same `id`, an asset's `sha256` never changes**; if it changes = must change `id` (new tag) | OM precedent: `v0.1.0-wasm32` **appending** an asset is legal (new name), **overwriting** the same name is not |
 
-### 3.5 消费端算法（把 HTTP 用到极致）
+### 3.5 Consumer algorithm (using HTTP to the fullest)
 
 ```
-1. GET <dir>/manifest.json           （Cache-Control: immutable ⇒ 永久缓存）
-2. 选编码：br → gzip → identity       （按 encodings 存在性，不靠试错）
-   ⚠ 若某编码 404（manifest 说有但站上没有）⇒ 报 ENCODING_MISSING，不静默回落
-3. 取字节：
+1. GET <dir>/manifest.json           (Cache-Control: immutable => cache forever)
+2. Choose encoding: br -> gzip -> identity   (by presence in encodings, not by trial and error)
+   Note: if an encoding 404s (the manifest says it exists but the site lacks it) => report ENCODING_MISSING, do not silently fall back
+3. Fetch bytes:
    if range.basis == "encoded" and enc != identity:
        N = ceil(encBytes / granularity)
-       并发 K 个单段 Range（RFC 9110 单段；**不用 multipart**，§1.1）
-       按 Content-Range 的 offset 落盘（乱序安全）
+       issue K concurrent single-range requests (RFC 9110 single range; **no multipart**, §1.1)
+       write to disk by the offset in Content-Range (out-of-order safe)
    else:
-       普通 GET（原始件 Accept-Ranges: none，别试 Range）
-4. 校验①：拼好的编码字节 sha256 == encodings[enc].sha256   （防拼错）
-5. 解码（gunzip / brotli）
-6. 校验②：解码后 bytes == bytes 且 sha256 == sha256        （防解错/装错层）
+       plain GET (the raw artifact has Accept-Ranges: none, do not bother with Range)
+4. Check one: sha256 of the assembled encoded bytes == encodings[enc].sha256   (catches mis-assembly)
+5. Decode (gunzip / brotli)
+6. Check two: decoded bytes == bytes and sha256 == sha256        (catches decode errors / wrong layer)
 ```
 
-**为什么两道校验缺一不可**：乱序并发最常见的错是「少一片/重复一片/错位」——
-第一道抓这个。解码层的错（用了错的编码器、流被截断）只有第二道能抓。
+**Why both checks are indispensable**: the most common error in out-of-order concurrency is
+"one chunk missing / one chunk duplicated / misaligned" — the first check catches it. Errors at
+the decode layer (wrong codec, truncated stream) can only be caught by the second check.
 
-**并发数 K**：契约只规定"K 由消费端定"，但**必须 ≤ 站侧允许的连接数**（避免自己把自己 DDoS）。
+**Concurrency K**: the contract only says "K is decided by the consumer", but **it must be ≤ the
+number of connections the site allows** (do not DDoS yourself).
 
-### 3.6 与「从源码构建契约」的关系（用户点名的冲突）
+### 3.6 Relation to the "build-from-source contract" (the conflict the user named)
 
-现状（`STATE.md:145` Q3 裁决）：
+Current state (`STATE.md:145` Q3 ruling):
 
-> `ways` 是派生不是记录；**不引入 `flavor`**（预编译与否是同一版的两种取得路径，不是版本的味道）。
+> `ways` is derived, not recorded; **do not introduce `flavor`** (precompiled or not are two
+> acquisition paths for the same version, not flavors of the version).
 
-**发布契约不动这条，只补第三层**：
+**The release contract does not touch this; it only adds a third layer**:
 
 ```
-版本语义（内容契约）      ：这一版是什么、能不能从源码构建（fromSource）
-取得路径（内容契约·新增）  ：从哪个 release 取（source / prebuilt 两个 ref）
-字节身份（发布契约）      ：那个 release 里每个字节对象的三份 sha
+version semantics (content contract)      : what this version is, whether it can be built from source (fromSource)
+acquisition path (content contract, new)  : which release to fetch from (two refs: source / prebuilt)
+byte identity (release contract)          : the three shas of every byte object in that release
 ```
 
-**判据**：`fromSource` 保持原义；`acquisition` 只放 **releaseRef 引用**，不放字节事实；
-发布契约是 `releaseRef` 的**定义处**。内容契约的 `url/sha256/size` 仍是"选中路径的投影"
-（不变量②照旧：顶层标量必须逐字等于某候选）。
+**Criterion**: `fromSource` keeps its original meaning; `acquisition` holds **only releaseRef
+references**, not byte facts; the release contract is the **definition site** of `releaseRef`.
+The content contract's `url/sha256/size` remain "the projection of the selected path" (invariant 2
+as before: top-level scalars must equal some candidate exactly).
 
-**⇒ 不合并、不替代，分层。** 而 `acquisition` 字段**必须等 manifest 有实物之后再加**
-——先有定义才有引用，否则就是第二次"无定义先推广"。
+**=> Do not merge, do not replace; layer them.** And the `acquisition` field **must wait until the
+manifest exists physically** — definition first, then reference, otherwise it is a second
+"promote before defining".
 
-### 3.7 压缩策略（实测数据支撑，收敛为契约条款）
+### 3.7 Compression policy (backed by measurements, converged into contract clauses)
 
-| 条件 | gzip | br | 依据 |
+| Condition | gzip | br | Basis |
 |---|---|---|---|
-| `bytes ≥ 1 MiB` | 必出 `-9` | **必出 q11** | br11 省 gzip-9 的 **37.54%**（omc.wasm）/ **34.95%**（octave.wasm） |
-| `bytes < 1 MiB` | `-6` 即可 | 可选 | 小件 br 头开销吃掉收益 |
-| 已压格式（`.gz/.zip/.whl/.woff2/.png/.jpg`） | **不出** | **不出** | 白工；UI 现脚本踩坑：zip 23 MiB + whl 13 MiB + tar.gz 79 MiB 被重复压 |
-| 成本 | 5.0s / 74.5MB | **148.5s / 74.5MB** | q11 必须 CI 一次 + 永久缓存 |
+| `bytes ≥ 1 MiB` | `-9` mandatory | **q11 mandatory** | br11 saves **37.54%** over gzip-9 (omc.wasm) / **34.95%** (octave.wasm) |
+| `bytes < 1 MiB` | `-6` suffices | optional | for small files the br header overhead eats the gain |
+| Already-compressed formats (`.gz/.zip/.whl/.woff2/.png/.jpg`) | **none** | **none** | wasted work; the current UI script already hit this: zip 23 MiB + whl 13 MiB + tar.gz 79 MiB compressed twice |
+| Cost | 5.0s / 74.5MB | **148.5s / 74.5MB** | q11 must run once in CI and be cached permanently |
 
-**关于「极限压的 gzip」**：实测 `-9` 相对 `-6` **只省 0.5%**（20,899,276 vs 21,004,021），
-CPU 翻倍。⇒ 时间该花在 br q11（省 37.5%），不是 gzip -9（省 0.5%）。
-「极限压」这个词在 wasm 上只对 br 成立。
+**On "maximum-compression gzip"**: measured, `-9` saves only **0.5%** over `-6` (20,899,276 vs
+21,004,021) at double the CPU. => Spend the time on br q11 (saves 37.5%), not on gzip -9 (saves
+0.5%). The phrase "maximum compression" only holds for br on wasm.
 
-### 3.8 站侧要遵守的（HTTP 头，不是 manifest）
+### 3.8 What the site side must obey (HTTP headers, not the manifest)
 
-| 头 | 值 | 为什么 |
+| Header | Value | Why |
 |---|---|---|
-| `Accept-Ranges` | `bytes`（sidecar）/ `none`（identity） | 让消费端**看头决定**，不用试 |
-| `Content-Type` | **原始件真实类型**（`application/wasm` 等），sidecar 也是**同一类型** | 现在的 `application/gzip` 是坑（§1.4） |
-| `Content-Encoding` | `gzip` / `br`（仅当按 `Accept-Encoding` 协商直出时） | RFC 9110 |
-| `Cache-Control` | `public, max-age=31536000, immutable` | 永不更新 |
-| `Content-Range` | 206 必带，且 `*/<total>` 的 total 必须**等于该编码层字节数** | 实测现在正确，要保 |
-| `416` | Range 越界/起始=尾 | 实测现在正确，要保 |
-| ~~`If-Range`~~ | **不依赖**（实测不守标准 §1.2） | 契约写明"不可用" |
+| `Accept-Ranges` | `bytes` (sidecar) / `none` (identity) | Let consumers **decide from the header**, no trial and error |
+| `Content-Type` | **the raw artifact's real type** (`application/wasm` etc.); the sidecar carries the **same type** | The current `application/gzip` is a trap (§1.4) |
+| `Content-Encoding` | `gzip` / `br` (only when serving directly after `Accept-Encoding` negotiation) | RFC 9110 |
+| `Cache-Control` | `public, max-age=31536000, immutable` | never updates |
+| `Content-Range` | mandatory on 206, and the total in `*/<total>` must **equal the byte count of that encoding layer** | measured correct today; keep it |
+| `416` | Range out of bounds / start = end | measured correct today; keep it |
+| ~~`If-Range`~~ | **not relied upon** (measured: does not follow the standard, §1.2) | the contract states "unusable" |
 
-**注意一个站侧坑**：现在 `Cache-Control: public, max-age=0, must-revalidate`（`.gz`）
-—— 这与"永不更新"相反。发布目录应改成 `immutable`（releases 与站点的分支产物要分开对待）。
+**One site-side trap to note**: currently `Cache-Control: public, max-age=0, must-revalidate`
+(`.gz`) — this is the opposite of "never updates". The release directory should be switched to
+`immutable` (releases and the site's branch artifacts must be treated separately).
 
 ---
 
-## 4. 谁产谁核
+## 4. Who produces, who verifies
 
-| 角色 | 做什么 | 不做什么 |
+| Role | Does | Does not |
 |---|---|---|
-| **各仓（生产者）** | 产 release + `manifest.json` + `.gz`/`.br`；**自己算三份 sha** | 不定义别家字节 |
-| **站侧（分发）** | 搬运 + 不可变缓存 + 索引；**只核对** manifest 的 sha | **不另算 sha、不改 manifest、不判断包能不能跑** |
-| **消费端（UI/宿主）** | 读 manifest → 选编码 → 分片 → 两道校验 | 不猜 `Content-Encoding`、不试错探测 |
-| **本仓** | 内容语义；**发布契约存副本** | 不产字节、不裁决分发实现 |
+| **Each repo (producer)** | Produces the release + `manifest.json` + `.gz`/`.br`; **computes its own three shas** | Does not define other repos' bytes |
+| **Site side (distribution)** | Moves bytes + immutable cache + index; **only verifies** the manifest's shas | **Does not recompute shas, does not modify the manifest, does not judge whether a package runs** |
+| **Consumers (UI/host)** | Reads manifest -> picks encoding -> chunks -> two checks | Does not guess `Content-Encoding`, does not probe by trial and error |
+| **This repo** | Content semantics; **keeps a copy of the release contract** | Does not produce bytes, does not adjudicate the distribution implementation |
 
-**已知张力（如实记）**：站侧 `111` 想「一份静态索引（repo→tag→assets+sha256）」
-—— 那**正是 manifest 的聚合视图**。**这不是重复，是索引应引用 manifest 而非重抄 sha**。
-建议：站侧索引 = `{repo, tag, manifestUrl}` 三元组 + 可选缓存；**sha 只在 manifest 里有一份**。
+**Known tension (recorded honestly)**: the site side's `111` wants "one static index
+(repo->tag->assets+sha256)" — that **is exactly the aggregate view of the manifests**. **This is
+not duplication; the index should reference the manifests rather than copy the shas.** Suggestion:
+the site index = a `{repo, tag, manifestUrl}` triple + optional caching; **sha exists in exactly
+one place, the manifest**.
 
 ---
 
-## 5. 未决（需用户/两家裁，我不擅定）
+## 5. Open questions (user / both parties must rule; I do not decide unilaterally)
 
-| # | 问题 | 我的倾向 | 理由 |
+| # | Question | My inclination | Reason |
 |---|---|---|---|
-| **U1** | manifest 每仓一份 vs 集群一份聚合 | **每仓一份**（`<repo>/<tag>/manifest.json`） | 生产者产权清晰；聚合是分发方的索引，引用而非复制 |
-| **U2** | `range.granularity` 固定还是可配 | **可配，缺省 5 MiB** | 用户原话「5MB 极其迅速」；但不同尺寸件最优粒度可能不同 |
-| **U3** | 内容契约何时加 `acquisition` | **manifest 有实物之后** | 先定义后引用 |
-| **U4** | br 是否默认必出（还是按需） | 大件必出、小件可选 | §3.7 实测 |
-| **U5** | 站侧索引是否完全委托 manifest | **是** | 避免 sha 两处 |
+| **U1** | One manifest per repo vs one aggregate per cluster | **One per repo** (`<repo>/<tag>/manifest.json`) | Producer ownership is clear; aggregation is the distributor's index, referencing rather than copying |
+| **U2** | Is `range.granularity` fixed or configurable | **Configurable, default 5 MiB** | The user's words: "5MB extremely fast"; but the optimal granularity may differ per file size |
+| **U3** | When does the content contract gain `acquisition` | **After the manifest exists physically** | define first, reference after |
+| **U4** | Should br be mandatory by default (or on demand) | mandatory for large artifacts, optional for small | §3.7 measurements |
+| **U5** | Should the site index be fully delegated to the manifests | **Yes** | avoids sha in two places |
 
 ---
 
-## 6. 落地顺序（**不跳步，这是刹车**）
+## 6. Rollout order (**no skipping steps; this is the brake**)
 
 ```
-1. 用户审定本设计                       ← 现在
-2. manifest 生成器 + 校验器（含 I1–I5 自证）   ← 先有工具
-3. 一个仓试点（建议 OM：已有 release + 两 asset）← 先有实物
-4. 站侧接入（索引引用 manifest）              ← 再分发
-5. UI/宿主 消费端接入（两道校验）              ← 最后改消费
-6. 内容契约加 acquisition（引用已存在的 manifest）← 最后动语义
+1. User approves this design                       <- now
+2. manifest generator + validator (with I1–I5 self-proof)   <- tooling first
+3. Pilot in one repo (OM suggested: it already has a release + two assets) <- artifact first
+4. Site-side integration (the index references the manifests)              <- distribution next
+5. UI/host consumer integration (two checks)              <- change consumers last
+6. Content contract gains acquisition (referencing an existing manifest) <- touch semantics last
 ```
 
-**明确不做**：在 1–3 完成前，**不再推广任何压缩/分片策略**。这封信是刹车。
+**Explicitly not doing**: until 1–3 are done, **do not promote any compression/chunking policy
+again**. This letter is the brake.
 
 ---
 
-## 7. 复跑方式（每条结论的出处）
+## 7. How to reproduce (the source of every conclusion)
 
 ```bash
 B=https://isui.ren/repo/Octave/omc/OpenModelicaCompiler_bg.wasm
 G=$B.gz
 
-# ① Range 只在 sidecar 上工作
-curl -sI -H "Range: bytes=0-1023" $B | head -1                 # 200（Accept-Ranges: none）
+# (1) Range works only on sidecars
+curl -sI -H "Range: bytes=0-1023" $B | head -1                 # 200 (Accept-Ranges: none)
 curl -sI -H "Range: bytes=0-1023" $G | head -1                 # 206 + Content-Range
 
-# ② 单段多种形式
+# (2) single-range variants
 curl -s -o /dev/null -w "%{http_code} %{size_download}\n" -H "Range: bytes=-1024" $G      # 206 1024
 curl -s -o /dev/null -w "%{http_code} %{size_download}\n" -H "Range: bytes=20893000-" $G  # 206 2435
-curl -s -o /dev/null -w "%{http_code}\n" -H "Range: bytes=0-99,200-299" $G               # 200（不支持多段）
+curl -s -o /dev/null -w "%{http_code}\n" -H "Range: bytes=0-99,200-299" $G               # 200 (multi-range unsupported)
 curl -s -o /dev/null -w "%{http_code}\n" -H "Range: bytes=99999999-100000000" $G         # 416
 
-# ③ 条件请求不守标准
+# (3) conditional requests do not follow the standard
 curl -s -o /dev/null -w "%{http_code}\n" -H "Range: bytes=0-1023" \
-  -H 'If-Range: "deadbeef-1"' $G        # 206（RFC 应 200）⇒ If-Range 不可依赖
-curl -s -o /dev/null -w "%{http_code}\n" -H 'If-None-Match: "6ae2ff51-13ed6cb"' $G   # 200（应 304）
+  -H 'If-Range: "deadbeef-1"' $G        # 206 (RFC says 200) => If-Range unreliable
+curl -s -o /dev/null -w "%{http_code}\n" -H 'If-None-Match: "6ae2ff51-13ed6cb"' $G   # 200 (should be 304)
 
-# ④ ETag = mtime-size（不是内容哈希）
-curl -sI $G | grep -i '^etag'          # "6ae2ff51-13ed6cb"；后缀 hex = Content-Length
+# (4) ETag = mtime-size (not a content hash)
+curl -sI $G | grep -i '^etag'          # "6ae2ff51-13ed6cb"; suffix hex = Content-Length
 
-# ⑤ 乱序分片 + 还原（§1.5）
-#  chunk3..chunk0 逆序拉 → 按序拼 → gunzip → sha256 = 8287589e…
+# (5) out-of-order chunking + reconstruction (§1.5)
+#  fetch chunk3..chunk0 in reverse -> concatenate in order -> gunzip -> sha256 = 8287589e…
 
-# ⑥ 无 Digest 头 / 无 zstd
-curl -sI $G | grep -i digest           # 空
-curl -s -o /dev/null -w "%{size_download}\n" -H "Accept-Encoding: zstd" $B   # 74579404（未压）
+# (6) no Digest header / no zstd
+curl -sI $G | grep -i digest           # empty
+curl -s -o /dev/null -w "%{size_download}\n" -H "Accept-Encoding: zstd" $B   # 74579404 (uncompressed)
 ```

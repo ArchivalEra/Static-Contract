@@ -1,102 +1,106 @@
-# 发布契约 v1.1 · 许可证协议（定稿）
+# Release Contract v1.1 · License Protocol (Final)
 
-> **状态**：**定稿**（2026-11-01），manifest `schema` 升至 **3**。
-> 实现：`tools/check-release-v4.py` 加 V11–V15；`scripts/sync-catalogue.py` 加 G7；
-> `scripts/build-site.py` 渲染许可列。**校验器自证通过后才算落地**（见 §9）。
+> **Status**: **Final** (2026-11-01), manifest `schema` raised to **3**.
+> Implementation: `tools/check-release-v4.py` adds V11–V15; `scripts/sync-catalogue.py` adds G7;
+> `scripts/build-site.py` renders the license column. **Nothing counts as landed until the validator self-proves** (see §8).
 >
-> **来源**：用户裁定「各个资源组件都需要明确标注各自的 license」，
-> 「去翻找 apt 官方的 copyright 附带方式，然后设计协议，v1.1 要来了」，
-> 以及四方向 design-it-twice 后的裁定「定稿，这很棒」。
-> **apt 侧事实全部取自本机实物**（`/usr/share/doc/*/copyright`），复跑见 §8。
+> **Source**: the user's rulings — that every resource component must explicitly declare its own
+> license; that the apt copyright convention should be dug out first and the protocol designed
+> from it, because v1.1 was coming; and, after a four-direction design-it-twice, that the result
+> should be finalized.
+> **Every apt-side fact is taken from real objects on this machine** (`/usr/share/doc/*/copyright`); re-run in §7.
 
 ---
 
-## 0. 一句话
+## 0. One sentence
 
-> **许可声明是 release 的一等字段：默认一条表达式管整个 release，
-> 逐组件差异时在该 entry 上覆盖。声明必须可追溯到 release 内的字节。
-> 「不知道」是合法终态，但「不知道」进不了 catalogue。**
+> **The license declaration is a first-class field of a release: by default one expression covers
+> the whole release, and when components differ it is overridden on that entry. The declaration
+> must be traceable to bytes inside the release.**
+> **"Not known" is a legal terminal state, but "not known" does not get into the catalogue.**
 
-三条设计判据（按重要性）：
+Three design criteria, in order of importance:
 
-1. **客户端只认一条规则** —— `entry.license ?? manifest.license.expr`。
-   没有 glob、没有优先级表、没有命名空间歧义。两个独立实现不会分歧。
-2. **不知道 ≠ 没有** —— `status: "unstated" | "refused"` 是合法 manifest，
-   但 catalogue 一律排除。**逼人给假答案比留白更坏。**
-3. **声明必须锚到字节** —— `provenance.sources[].anchor` 指向 release 内的 entry，
-   `anchor_sha256` 必须等于该 entry 的 sha256。⇒ **校验零下载**（沿用 G4 手法），
-   且「声明与真相不符」在结构上可被发现。
+1. **The client knows exactly one rule** — `entry.license ?? manifest.license.expr`.
+   No glob, no precedence table, no namespace ambiguity. Two independent implementations will not disagree.
+2. **Not known is not the same as absent** — `status: "unstated" | "refused"` is a legal manifest,
+   but the catalogue excludes it without exception. **Being wrong is worse than being empty** —
+   forcing a false answer is worse than leaving the field blank.
+3. **The declaration must anchor to bytes** — `provenance.sources[].anchor` points at an entry inside the release,
+   and `anchor_sha256` must equal that entry's sha256. ⇒ **zero downloads to validate** (the G4 technique),
+   and a declaration that does not match the truth becomes structurally discoverable.
 
 ---
 
-## 1. 问题陈述（为什么需要 v1.1）
+## 1. Problem statement (why v1.1 is needed)
 
-`schema: 2` 的 manifest **没有任何许可字段**（实测键：
-`chunkSize` / `codecs` / `entries` / `id` / `products` / `schema`）。后果：
+A `schema: 2` manifest **has no license field at all** (measured keys:
+`chunkSize` / `codecs` / `entries` / `id` / `products` / `schema`). Consequences:
 
-| 现状 | 问题 |
+| Situation | Problem |
 |---|---|
-| 站点只标本站 AGPL | 收录的 release **许可不明** —— 读者无法知道 `forge-optim-1.6.3` 能不能商用 |
-| 字节来自第三方（Octave-Forge） | `Octave-Extra-Content` 的 LICENSE 明写「Package bytes ... governed by each package's own license (see COPYING inside its tarball)」，**那份 COPYING 在 tarball 里，不在任何元数据里** |
-| 客户端只拉字节 | 拿到 tarball 才知道许可 —— **太晚**，且很多包根本没有 COPYING |
-| 仓级 `license` 字段不可信 | 实测两例：`LLVM-wasm` 仓是 `AGPL-3.0` 但 `clang.wasm` 是 `Apache-2.0 WITH LLVM-exception`；`Octave-Extra-Content` 是 `NOASSERTION`（其正文说「各包自有许可」） |
+| The site marks only its own AGPL | The listed releases **have unknown license** — a reader cannot tell whether `forge-optim-1.6.3` may be used commercially |
+| The bytes come from a third party (Octave-Forge) | The `Octave-Extra-Content` LICENSE states verbatim: "Package bytes ... governed by each package's own license (see COPYING inside its tarball)", and **that COPYING lives inside the tarball, not in any metadata** |
+| The client only pulls bytes | You learn the license only after fetching the tarball — **too late**, and many packages have no COPYING at all |
+| The repository-level `license` field is not trustworthy | Two measured cases: the `LLVM-wasm` repo is `AGPL-3.0` but `clang.wasm` is `Apache-2.0 WITH LLVM-exception`; `Octave-Extra-Content` is `NOASSERTION` (its text says each package carries its own license) |
 
-**这是分发合规缺口，不是展示问题。** apt 早遇到过，它的答案是 `copyright` 文件。
+**This is a distribution-compliance gap, not a presentation problem.** apt ran into it long ago, and its answer is the `copyright` file.
 
 ---
 
-## 2. apt 的做法（实物调研，本机实测）
+## 2. What apt does (study of real objects, measured on this machine)
 
-### 2.1 机制与覆盖率
+### 2.1 Mechanism and coverage
 
-Debian 每个包在 `/usr/share/doc/<pkg>/copyright` 附一份**机器可读版权文件**（DEP-5）：
+Debian ships a **machine-readable copyright file** (DEP-5) at `/usr/share/doc/<pkg>/copyright` for every package:
 
 ```
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
-Upstream-Name: <名称>
-Source: <上游地址>
+Upstream-Name: <name>
+Source: <upstream URL>
 
 Files: *
-Copyright: <年份 作者>
-License: <SPDX 短名>
+Copyright: <year author>
+License: <SPDX short name>
 
-Files: <具体路径>
+Files: <specific path>
 Copyright: ...
 License: ...
 ```
 
-**实测覆盖率**（2026-11-01 本机）：`3265` 个包含 `3237` 份 copyright ⇒ **99.1%**。
-⇒ `copyright` 在 apt 生态里是**近乎强制**的约定。
+**Measured coverage** (2026-11-01, this machine): `3265` packages contain `3237` copyright files ⇒ **99.1%**.
+⇒ `copyright` is a **near-mandatory** convention in the apt ecosystem.
 
-### 2.2 提取到的四条规则（以及我们采纳/不采纳什么）
+### 2.2 Four rules extracted (and what we adopt, and what we do not)
 
-| apt 的做法 | 实物证据 | v1.1 采纳 |
+| What apt does | Evidence in the real objects | v1.1 |
 |---|---|---|
-| `Files:` glob，`*` 兜底 + 特例覆盖 | accountsservice | ❌ **不采纳 glob**（客户端要重实现匹配器 + 优先级 + 命名空间；改用 entry 级覆盖） |
-| `License:` 短名 + 全文单独成段 | apt、7zip | ✅ 采纳（`expr` 短名 + `provenance` 指路） |
-| `or` / `and` 多许可 | aha `MPL-1.1 or LGPL-3+`；apt `GPL-2+ and curl` | ✅ 采纳（SPDX 表达式文法） |
-| `Files-Excluded:` 声明「原样有但不分发」 | 7zip 的 RAR 代码 | ✅ 采纳（`excluded[]`，见 §4.4） |
-| **「best effort」的诚实态度** | `apt/copyright` 的 `Comment:` 段原文：*"This file is a best effort to document the statements of copyright and licenses as stated in the file, but is not a complete representation of all copyright"* | ✅ **全盘采纳** —— 协议不要求完美，要求如实标注已知与未知 |
+| `Files:` glob, `*` fallback plus specific overrides | accountsservice | **not adopted** — no glob (the client would have to reimplement the matcher + precedence + namespaces; entry-level override instead) |
+| `License:` short name plus the full text in a separate paragraph | apt, 7zip | adopted (`expr` short name + `provenance` pointer) |
+| `or` / `and` multiple licenses | aha `MPL-1.1 or LGPL-3+`; apt `GPL-2+ and curl` | adopted (SPDX expression grammar) |
+| `Files-Excluded:` declaring "present as-is but not distributed" | 7zip's RAR code | adopted (`excluded[]`, see §4.4) |
+| **the honest "best effort" stance** | the `Comment:` paragraph of `apt/copyright`, verbatim: *"This file is a best effort to document the statements of copyright and licenses as stated in the file, but is not a complete representation of all copyright"* | **adopted wholesale** — the protocol does not demand perfection, it demands honest labelling of what is known and what is not |
 
-### 2.3 我们**不采纳** `Files:` glob 的判据（四方向评审一致结论）
+### 2.3 The criterion for **not adopting** the `Files:` glob (agreed by all four review directions)
 
-草案曾用 `Files: *` 兜底 + 特例覆盖（照抄 DEP-5）。**三份独立设计都否掉了它**，理由一致：
+The draft once used a `Files: *` fallback plus specific overrides (copying DEP-5). **Three independent designs all rejected it**, for the same reasons:
 
-- 客户端必须实现 glob 匹配器（`*` 跨不跨 `/`？大小写？）
-- 必须实现**优先级顺序**（第一匹配生效）
-- 必须实现**命名空间歧义**（`<product>/<name>` 还是裸 `name`？）
-- 三个实现都必然在边界上分歧 ⇒ **「同一份 manifest，两个客户端读出两个许可」**
+- the client must implement a glob matcher (does `*` cross `/`? what about case?)
+- it must implement a **precedence order** (first match wins)
+- it must implement **namespace disambiguation** (`<product>/<name>` or bare `name`?)
+- all three implementations will inevitably diverge at the edges ⇒ **one manifest, two clients reading two different licenses**
 
-而真实数据不支持这个复杂度：13 个 forge 包里 **8 个是单一许可**，最复杂的
-`optim` 也只是 `GPL-3.0-or-later and BSD-3-Clause and public domain`（一个 AND 串）。
+And the real data does not support that complexity: of 13 forge packages, **8 carry a single license**, and the most complex,
+`optim`, is only `GPL-3.0-or-later and BSD-3-Clause and public domain` (one AND chain).
 
 ---
 
-## 3. 协议形态（`schema: 3`）
+## 3. Protocol shape (`schema: 3`)
 
-**许可 = 名称 + 指向全文的链接。** 一行字符串不够，因为各家正文不同、且会换代
-（用户 2026-11-01 裁定：「各家 license 文章不一样，改成指向链接，强制要求 release
-填写每个产物的 license 在那个仓库的链接，毕竟有过几代换许可证的场景」）。
+**A license is a name plus a link to the full text.** A one-line string is not enough.
+As ruled on 2026-11-01: the license text differs between projects, and projects change
+licenses across generations. A release must therefore point at the license text that
+applies to it, per component, rather than assert a short identifier that will go stale.
 
 ```jsonc
 {
@@ -114,7 +118,8 @@ License: ...
   "entries": [
     {
       "product": "forge", "name": "optim-1.6.3.tar.gz",
-      // 逐产物也可以各自指链接（真实数据里 FONT-RFN / NOTICE 这类常不同）
+      // an individual artifact may also point at its own link
+      // (in the real data FONT-RFN / NOTICE entries often differ)
       "license": {"id": "MIT", "url": "https://opensource.org/license/mit"},
       ...
     }
@@ -122,62 +127,62 @@ License: ...
 }
 ```
 
-### 3.1 三层各管一件事（**v1.1 的全部设计**）
+### 3.1 Three layers, one job each (**the whole of the v1.1 design**)
 
-| 层 | 谁看 | 判据 |
+| Layer | Who reads it | Criterion |
 |---|---|---|
-| **字节** | 下载者 | `GET <base>/<file>` —— **一条链接，普通 GET，不认识许可** |
-| **manifest** | 需要完整性 / 发现 / 合规的人 | `license: {id, url}` —— **展示 + 可点回全文** |
-| **catalogue** | 上架闸 | `id` 与 `url` **缺任一 ⇒ 不收录** |
+| **bytes** | downloaders | `GET <base>/<file>` — **one link, a plain GET, license-unaware** |
+| **manifest** | anyone who needs integrity / discovery / compliance | `license: {id, url}` — **display, plus click-through to the full text** |
+| **catalogue** | the listing gate | missing either `id` or `url` ⇒ **not listed** |
 
-**闸门只在上架时挡一次，不在每个消费者那里挡 N 次。**
-这是用户 2026-11-01 的纠正：「人家只想下个包一条链接」。
+**The gate blocks once, at listing time, not N times at every consumer.**
+This is the user's 2026-11-01 correction: someone who wants a package wants one link to download it, and nothing more.
 
-### 3.2 字段
+### 3.2 Fields
 
-| 字段 | 必需 | 语义 |
+| Field | Required | Meaning |
 |---|---|---|
-| `license.id` | ✅ | SPDX 表达式（可为复合：`A AND B`）。**不校验是否在 SPDX 词表内** |
-| `license.url` | ✅ | **必须是 `https://`**。指向该 release 的许可全文 |
-| `entries[].license` | ⭕ 可选 | 覆盖默认，同样是 `{id, url}` 两项 |
-| `entries[].role` | ⭕ 可选 | `payload`（默认）/ `license` / `notice` |
-| `entries[].excluded[]` | ⭕ 可选 | `{path, why}` —— 包内「原样有但不分发」 |
+| `license.id` | yes | SPDX expression (may be compound: `A AND B`). **Not checked against the SPDX vocabulary** |
+| `license.url` | yes | **must be `https://`**. Points at the license text for that release |
+| `entries[].license` | optional | overrides the default; likewise two items, `{id, url}` |
+| `entries[].role` | optional | `payload` (default) / `license` / `notice` |
+| `entries[].excluded[]` | optional | `{path, why}` — "present inside the package but not distributed" |
 
-**为什么 `url` 必填而不是可选**：
+**Why `url` is required rather than optional:**
 
-1. **各家正文不同** —— `optim` 的 `COPYING.html` 不是标准 GPL 文本，含附加条款；
-2. **会换代** —— 上游几年一换许可，`id` 的字符串会过期，`url` 指向的**当前正文**不会；
-3. **GPL 系要求随分发附全文** —— 指向外部权威正文比在 16 个 release 里各存一份 GPL 副本更省；
-4. **实测 13/13 个真实包都已有现成链接**（`packages/*.json` 的 `fa-copyright` 链接的 `url` 字段），
-   迁移是转录不是调研。
+1. **Each project's text differs** — `optim`'s `COPYING.html` is not standard GPL text; it carries additional terms;
+2. **They are replaced across generations** — upstream changes license every few years, so the `id` string expires while the **current text** that `url` points at does not;
+3. **GPL-family licenses require the full text to accompany distribution** — pointing at an authoritative external text is cheaper than storing 16 copies of the GPL, one per release;
+4. **13/13 real packages already have a ready link** (the `url` field of the `fa-copyright` link in `packages/*.json`),
+   so migration is transcription, not research.
 
-### 3.3 客户端（**照旧，一行都没变**）
+### 3.3 The client (**unchanged, not one line different**)
 
 ```
-1. GET <base>/manifest.json          # 想发现的话
-2. 校验 schema / V1–V11（本地，0 请求）
-3. 逐字取 variant.chunks[i].file     # 绝不拼
-4. GET <base>/<file>                 # 普通 GET —— 与许可证无关
-5. 校验 bytes + 逐块 sha256 → 解码 → 拼接
-6. 界面显示 license.id，并把它做成指向 license.url 的链接
+1. GET <base>/manifest.json          # if you want discovery
+2. validate schema / V1–V11 (local, 0 requests)
+3. take variant.chunks[i].file verbatim   # never assemble the name
+4. GET <base>/<file>                 # a plain GET — unrelated to the license
+5. verify bytes + per-chunk sha256 → decode → concatenate
+6. in the UI show license.id and make it a link to license.url
 ```
 
-**许可不出现在第 3–5 步的任何分支里。** 它只影响第 6 步的展示。
+**The license appears in none of the branches of steps 3–5.** It affects the display in step 6 only.
 
-**客户端不需要**：解析 SPDX、联网核实、拒绝解包。
-`license` 是**两行元数据**，不是闸门。点开链接就能看全文 —— 那才是「各家各异」的正确解法。
+**The client does not need to**: parse SPDX, verify over the network, or refuse to unpack.
+`license` is **two lines of metadata**, not a gate. Clicking the link shows the full text — that is the correct answer to "the texts differ per project".
 
 ---
 
-## 4. 不变量（V11，唯一一条）
+## 4. Invariant (V11, the only one)
 
-| # | 不变量 | 反向用例（必须拒） |
+| # | Invariant | Counter-case (must reject) |
 |---|---|---|
-| **V11** | `license` 是 `{id, url}` 对象；`id` 是能通过 SPDX 文法的非空字符串（可为复合）；`url` 是 `https://` 开头且非空。`entries[].license` 若存在同理。`role ∈ {payload,license,notice}`；`excluded[].why` 非空 | 缺 `license` / 缺 `id` / 缺 `url` / `url` 是 `http://` / `id` 空串 / `license` 是字符串（不含链接的旧形态） |
+| **V11** | `license` is a `{id, url}` object; `id` is a non-empty string that passes the SPDX grammar (may be compound); `url` starts with `https://` and is non-empty. `entries[].license`, when present, the same. `role ∈ {payload,license,notice}`; `excluded[].why` non-empty | missing `license` / missing `id` / missing `url` / `url` is `http://` / `id` empty string / `license` is a string (the old form without a link) |
 
-**零下载、零联网。** V11 只读 manifest 结构。
+**Zero downloads, zero network.** V11 reads manifest structure only.
 
-### 4.1 SPDX 表达式文法（`id` 用）
+### 4.1 SPDX expression grammar (for `id`)
 
 ```
 expr := term (("AND" | "OR") term)*
@@ -186,17 +191,17 @@ id   := ^[A-Za-z0-9][A-Za-z0-9.+-]*$
 license-ref := ^LicenseRef-[A-Za-z0-9._-]+$
 ```
 
-- 算符必须**大写**；`WITH` 只作用于单个标识符且不链式
-- **不校验是否在 SPDX 词表内**（词表会漂；与 v4 §3「平台容量不进协议」同一条判据）
-- **客户端不需要实现** —— 它只展示 `id` 字符串
+- operators must be **uppercase**; `WITH` applies to a single identifier and does not chain
+- **no check against the SPDX vocabulary** (the vocabulary drifts; the same criterion as v4 §3, "platform capacity does not enter the protocol")
+- **the client does not need to implement it** — it only displays the `id` string
 
-### 4.2 散文 → SPDX 的转换（生产者必读，实测踩过）
+### 4.2 Prose → SPDX conversion (producers must read this; measured, and it bit us)
 
-上游元数据里的许可是**散文**（`GPL-3.0-or-later and BSD-3-Clause and public domain`）。
-转成 SPDX 时**必须先切 token，再替换整 token**：
+License values in upstream metadata are **prose** (`GPL-3.0-or-later and BSD-3-Clause and public domain`).
+When converting to SPDX you **must tokenize first, then replace whole tokens**:
 
 ```python
-# ✅ 正确
+# correct
 toks = label.split()
 out = ["AND" if t.lower() == "and" else
        "OR"  if t.lower() == "or"  else
@@ -204,146 +209,140 @@ out = ["AND" if t.lower() == "and" else
 ```
 
 ```python
-# ❌ 灾难：正则词边界会撞进连字符里
+# wrong: a regex word boundary lands inside hyphens
 re.sub(r"\band\b", "AND", label)
 re.sub(r"\bor\b",  "OR",  label)
-#   GPL-3.0-or-later  →  GPL-3.0-OR-later   ← 非法，且 13 个产物一起中招
+#   GPL-3.0-or-later  →  GPL-3.0-OR-later   ← invalid, and all 13 artifacts are hit at once
 ```
 
-**为什么必须防**：`GPL-3.0-OR-later` 的**形状**是合法的（`^[A-Za-z0-9][A-Za-z0-9.+-]*$`），
-所以「不校验 SPDX 词表」的判据会放过它。⇒ V11 额外挡一种机械错形：
+**Why this must be guarded**: the **shape** of `GPL-3.0-OR-later` is legal (`^[A-Za-z0-9][A-Za-z0-9.+-]*$`),
+so the criterion "do not check the SPDX vocabulary" would let it through. ⇒ V11 additionally blocks one mechanical malformation:
 
 ```
-标识符里不许出现 `-AND-` / `-OR-`（大写）在中间，也不许以 `-AND` / `-OR` 结尾
+an identifier must not contain `-AND-` / `-OR-` (uppercase) in the middle, nor end with `-AND` / `-OR`
 ```
 
-这条**不**校验是否在 SPDX 词表内（词表会漂，见下），只挡「字符串替换看着对、
-边界条件全错」这一类。
+This does **not** check the SPDX vocabulary (it drifts, see below); it blocks only the class where the string replacement looks right
+and the boundary conditions are all wrong.
 
-（来源：`Octave-Extra-Content` `mail/135` §3 实测，13 个包里有 `-or-later` 的那批
-会集体变成非法。我复现后加了判据，自证从 35 → 37。）
+(Source: `Octave-Extra-Content` `mail/135` §3, measured: among the 13 packages, the batch carrying `-or-later` would collectively become invalid. After reproducing it I added the criterion, and the self-proof went from 35 → 37.)
 
-### 4.3 实现者注意：zstd 分片必须**逐块解码**
+### 4.3 Implementers beware: zstd chunks must be **decoded chunk by chunk**
 
 ```
-按 chunk.file 逐块解码后拼接，不要把多个块当单一多帧流一次解。
+Decode each chunk.file separately and then concatenate; do not treat several chunks as one multi-frame stream and decode it in one pass.
 ```
 
-`decompress()` 类 API 通常**只解第一帧** ⇒ 多块载荷会静默截断。
-V6 的 2^25 上限就是为「单块独立可解」设的，但实现者极易踩。
+A `decompress()`-style API usually **decodes only the first frame** ⇒ a multi-chunk payload is silently truncated.
+V6's 2^25 limit exists so that each chunk decodes independently, and this is extremely easy to get wrong.
 
-**判据：单块成功不构成多块正确。** 必须用**多块**载荷验证
-（LLVM 第一版实测：10 个单块的过、4 个多块的炸）。
+**Criterion: a passing single-chunk case does not prove the multi-chunk path.** Verification must use a **multi-chunk** payload
+(LLVM's first version, measured: 10 single-chunk cases passed, 4 multi-chunk cases blew up).
 
-（来源：`LLVM-wasm` 实测 + `extra-content` `mail/135` §4.1 复核。）
+(Source: `LLVM-wasm` measurement + `extra-content` `mail/135` §4.1 review.)
 
-### 4.4 边界：release 内的 tarball 不受契约约束
+### 4.4 Boundary: tarballs inside a release are not governed by the contract
 
-契约只管 **release 顶层那份 `manifest.json`**。tarball 内部可以有任何结构
-（包括另一份 manifest，比如宿主 provision 硬编码的那份）——
-那是生产者与消费方之间的内部约定，**不是分发契约的一部分**。
+The contract governs **the one `manifest.json` at the top level of a release**. A tarball may contain any structure
+(including another manifest, such as the one a host provision hard-codes) —
+that is an internal arrangement between producer and consumer, **not part of the distribution contract**.
 
-写这一句是为了将来不会有人问「manifest 到底在哪」：**只有一处。**
+The sentence is here so that nobody later asks where exactly the manifest is: **there is only one place.**
 
-### 4.5 已知限制：`license` 过了 V11 **≠** 许可写得对
+### 4.5 Known limit: passing V11 does not mean the license is correct
 
-> `license` 通过形状校验 **≠** 许可写得对。V11 只挡机械错形；
-> 语义正确性由生产者负责**逐条核**。
+> Passing the shape check for `license` is **not** the same as writing the license correctly. V11 blocks mechanical malformations only;
+> semantic correctness is the producer's responsibility, checked **item by item**.
 
-**这一条是血的教训**（2026-11-01，同一个夜里发生三次）：
+**This one is a lesson paid in blood** (2026-11-01, three times in the same night):
 
-| 谁 | 错 | 抓法 |
+| Who | The error | How it was caught |
 |---|---|---|
-| 我 | 建议 LLVM 写 `Apache-2.0 WITH LLVM-exception` | 漏了 `driver/*.mjs` 与 `LICENSE` 的 AGPL —— **LLVM 逐条核后发现** |
-| 我 | 另一封把 emscripten 写成 `BSD-3-Clause` | 实际 `MIT OR NCSA` —— **LLVM 读正文首段后发现** |
-| extra-content | 从「这是个 LLVM 工具链包」**推断**整包许可 | 同上两处 —— 被 LLVM 驳回 |
+| me | recommended LLVM write `Apache-2.0 WITH LLVM-exception` | omitted the AGPL in `driver/*.mjs` and `LICENSE` — **found when LLVM checked item by item** |
+| me | another letter wrote emscripten as `BSD-3-Clause` | it is actually `MIT OR NCSA` — **found when LLVM read the first paragraph of the text** |
+| extra-content | **inferred** the whole package's license from "this is an LLVM toolchain package" | the same two places — rejected by LLVM |
 
-**三次都是「推断」输给「逐条核」。** 三次都过了 V11（形状合法），三次内容都是错的。
+**All three times, inference lost to item-by-item checking.** All three passed V11 (legal shape), and all three contents were wrong.
 
-⇒ **V11 的价值是挡住机械错形（缺字段、明文 http、`-OR-` 混进连字符），
-不是证明语义正确。** 别把前者当后者。
+⇒ **V11's value is blocking mechanical malformations (missing fields, plain http, `-OR-` mixed into hyphens),
+not proving semantic correctness.** Do not mistake the former for the latter.
 
-**推荐做法**（不是必填）：逐条核完写 `license.verified`（见 §4.7），
-把「这个 id 为什么对」留痕。`LLVM-wasm` 把 `NCSA` 核到 SPDX 官方列表
-`licenses.md:483` + `text/NCSA.txt` 同源，就是正确形状。
+**Recommended practice** (not required): after checking item by item, write `license.verified` (see §4.7),
+leaving a trace of why this id is right. `LLVM-wasm` traced `NCSA` to the official SPDX list
+at `licenses.md:483` + `text/NCSA.txt`, same source — that is the correct shape.
 
-### 4.6 已知限制：协议证明不了声明为真（**明说，不假装**）
+### 4.6 Known limit: the contract cannot prove a declaration is true (**say it plainly, do not pretend**)
 
-V11 只查**形状**（合法 SPDX + https url）。它能抓住的与抓不住的：
+V11 checks **shape** only (legal SPDX + https url). What it can catch and what it cannot:
 
-| 能抓 | 抓不住 |
+| Can catch | Cannot catch |
 |---|---|
-| 缺字段 / 空串 / 明文 http | **`id` 是不是真的适用于这些字节** |
-| SPDX 文法错误（小写算符、括号不配对） | `id` 拼写对不对（`NCSA` vs `UoI-NCSA`） |
-| 散文转 SPDX 的机械错形（`GPL-3.0-OR-later`） | `url` 指向的正文是否就是 `id` 说的那个 |
-| `url` 指向 404（**也不验，见下**） | 发布方是否诚实 |
+| missing field / empty string / plain http | **whether `id` really applies to these bytes** |
+| SPDX grammar errors (lowercase operator, unbalanced parentheses) | whether the `id` is spelled right (`NCSA` vs `UoI-NCSA`) |
+| mechanical malformation when converting prose to SPDX (`GPL-3.0-OR-later`) | whether the text `url` points at is the one `id` names |
+| `url` points at a 404 (**not verified either, see below**) | whether the publisher is honest |
 
-**`url` 可达性也不验**：实测本机 3 个样本 1 个 `200`、2 个 `000`
-（本网络出口问题，非链接缺陷）。协议无法区分「链接坏了」与「我这儿网络不通」。
+**`url` reachability is not verified either**: on this machine 3 samples measured, 1 returned `200` and 2 returned `000`
+(a local network egress problem, not a link defect). The protocol cannot distinguish a broken link from a network that is unreachable from here.
 
-⇒ **人读仍是最后一道。** 这不是缺陷，是「协议不假装能证真伪」这条判据的代价。
+⇒ **A human read is still the last line.** This is not a defect; it is the price of the criterion that the protocol does not pretend it can prove truth.
 
-**实例（2026-11-01，真实踩到）**：
-我给 `LLVM-wasm` 建议 `Apache-2.0 WITH LLVM-exception`，漏了它仓里
-`driver/*.mjs` 与 `LICENSE` 的 `AGPL-3.0-or-later`；而另一封信把 emscripten
-写成 `BSD-3-Clause`，实际是 `MIT OR NCSA`。**两处都是靠人读正文发现的，不是校验器。**
+**Instance (2026-11-01, actually hit)**:
+I recommended `Apache-2.0 WITH LLVM-exception` to `LLVM-wasm` and omitted the `AGPL-3.0-or-later` of `driver/*.mjs` and `LICENSE` in its repo; another letter wrote emscripten as `BSD-3-Clause` when it is actually `MIT OR NCSA`. **Both were found by a human reading the text, not by a validator.**
 
-### 4.7 可选：`license.verified`（人核留痕，**不是判据**）
+### 4.7 Optional: `license.verified` (a human-check trace, **not a criterion**)
 
-协议不校验 SPDX 词表（词表会漂）。但「这个 id 为什么对」可以留痕：
+The protocol does not check the SPDX vocabulary (it drifts). But why a given id is right can be left on record:
 
 ```jsonc
 "license": {
   "id": "MIT OR NCSA",
   "url": "https://github.com/emscripten-core/emscripten/blob/main/LICENSE",
-  "verified": {                       // ⭕ 可选
+  "verified": {                       // optional
     "by": "LLVM-wasm",
     "at": "2026-11-01",
-    "how": "spdx/license-list-data licenses.md:483 + text/NCSA.txt 与包内正文同源"
+    "how": "spdx/license-list-data licenses.md:483 + text/NCSA.txt, same source as the text in the package"
   }
 }
 ```
 
-**它不参与 V11、不影响下载路径、不要求机器判据。** 作用只有一个：
-让下一个人不必重查。
+**It does not take part in V11, does not affect the download path, and requires no machine criterion.** It has exactly one purpose:
+so the next person does not have to re-check.
 
-**为什么不是 `provenance` 见证链的复活**：见证链要求「证据锚到 entry 的 sha256」
-并参与不变量校验；`verified` 是一句人可以核的话 + 出处，**协议不读它**。
-（来源：`LLVM-wasm` `mail/024` §1 —— 它把 `NCSA` 核到官方列表第 483 行，
-我复跑确认。这个字段是把那次核查的形状固化下来。）
+**Why this is not the `provenance` witness chain coming back**: the witness chain required evidence to be anchored to the entry's sha256
+and took part in invariant validation; `verified` is a sentence a human can check plus a citation — **the protocol does not read it**.
+(Source: `LLVM-wasm` `mail/024` §1 — it traced `NCSA` to line 483 of the official list, and I re-ran and confirmed. This field fixes the shape of that check.)
 
-### 4.8 「不可变」是地基，不是约束
+### 4.8 Immutability is the foundation, not a constraint
 
-历史 release（`schema: 1` 的前契约格式）**不改造** —— 重发成 schema 3 要整体重排
-`products` / `entries` / `variants`，而**字节不该动**。
+Historical releases (the pre-contract format, `schema: 1`) **are not retrofitted** — republishing as schema 3 would mean re-arranging
+`products` / `entries` / `variants` wholesale, and **the bytes must not move**.
 
-> 「release 不可变是这套东西的地基，『改造历史 release』本身就是对它的一次违反。」
-> —— `LLVM-wasm` `mail/022` §4
+> "Release immutability is the foundation of this whole thing; 'retrofitting a historical release' is itself a violation of it."
+> — `LLVM-wasm` `mail/022` §4
 
-⇒ 它们的正确归宿是**被 G5 挡在 catalogue 外**，而不是被"修好"。
+⇒ Their correct destination is **to be kept out of the catalogue by G5**, not to be "fixed".
 
-### 4.9 为什么只有一条不变量
+### 4.9 Why only one invariant
 
-协议**不负责验证声明是否真实**，只保证：
-- 声明存在且形状合法（V11）
-- **没有声明的 release 不上架**（G7）
-- **有链接可点**（`url` 必填）—— 这是唯一的"可核"手段，且由人来看，不是协议来判断
+The protocol **is not responsible for verifying that a declaration is true**, only for guaranteeing:
+- the declaration exists and its shape is legal (V11)
+- **a release with no declaration is not listed** (G7)
+- **there is a link to click** (`url` is required) — this is the only checkable means, and a human does the checking, not the protocol
 
 ---
 
-## 5. catalogue（唯一的闸门）
+## 5. catalogue (the only gate)
 
 ### 5.1 G7
 
-| 闸 | 判据 | 反向用例 |
+| Gate | Criterion | Counter-case |
 |---|---|---|
-| **G7** | schema 3 且 `license` 有非空 `id` 与 `https://` 的 `url` | 缺任一 / `url` 非 https ⇒ **不进 catalogue**（记入 `excluded` 并写原因） |
+| **G7** | schema 3 and `license` has a non-empty `id` and an `https://` `url` | missing either / `url` not https ⇒ **not listed** (recorded in `excluded` with a reason) |
 
-**「合法」与「可上架」是两件事**：schema 3 缺 `license` 的 manifest
-是**非法**（V11 红），所以 G7 这里其实是双保险；真正的分界在
-**schema 2 的迁移期放行**（见 §6）。
+**"Legal" and "listable" are two different things**: a schema-3 manifest missing `license` is **illegal** (V11 red), so G7 is really a second lock here; the real dividing line is **the migration-period allowance for schema 2** (see §6).
 
-### 5.2 catalogue 摘录
+### 5.2 catalogue excerpt
 
 ```jsonc
 "license": {
@@ -352,99 +351,99 @@ V11 只查**形状**（合法 SPDX + https url）。它能抓住的与抓不住�
 }
 ```
 
-**就是 manifest 里那两项，原样抄。** 不派生、不加时间戳、不嵌套 sha。
+**Exactly those two items from the manifest, copied verbatim.** No derivation, no timestamp added, no nested sha.
 
 ---
 
-## 6. 迁移
+## 6. Migration
 
-| 阶段 | 动作 |
+| Stage | Action |
 |---|---|
-| **M0（现在）** | 校验器接受 schema 2 与 3；schema 3 必须有 `license` |
-| **M1** | 生产者重发 manifest（**asset 一个不动**），加一行 `license` |
-| **M2** | schema 2 的旧 release 仍进 catalogue，`license` 摘录为 `null` |
-| **M3** | 通过 `ACCEPT_SCHEMA = (3,)` 关掉 schema 2 通道（时机由用户裁定） |
+| **M0 (now)** | the validator accepts schema 2 and 3; schema 3 must have `license` |
+| **M1** | producers reissue the manifest (**not one asset touched**), adding one `license` line |
+| **M2** | old schema-2 releases still enter the catalogue, with `license` excerpted as `null` |
+| **M3** | close the schema-2 channel via `ACCEPT_SCHEMA = (3,)` (timing is the user's call) |
 
-**重发 manifest 不需要重传 asset**：v4 的 asset 集合由 manifest 的 `file` 字段定义，
-只要 `bytes`/`sha256`/`file` 逐字不变，asset 一个都不用动。
+**Reissuing a manifest does not require re-uploading assets**: v4's asset set is defined by the manifest's `file` fields,
+so as long as `bytes`/`sha256`/`file` are verbatim identical, not one asset needs to move.
 
-### 6.1 迁移真值（实测，来自 `packages/*.json` 的 `fa-copyright` 链接）
+### 6.1 Migration ground truth (measured, from the `fa-copyright` links in `packages/*.json`)
 
 | release | `license.id` | `license.url` |
 |---|---|---|
-| 13 × forge | 见下 | 上游 `fa-copyright` 链接的 `url`（**全部已存在**） |
+| 13 × forge | see below | the `url` of the upstream `fa-copyright` link (**all already exist**) |
 | `forge-cgi` | `GPL-2.0-or-later` | `https://sourceforge.net/p/octave/cgi/ci/master/tree/COPYING` |
 | `forge-datatypes` | `GPL-3.0-or-later` | `https://github.com/pr0m1th3as/datatypes/blob/master/COPYING` |
 | `forge-geometry` | `GPL-3.0-or-later AND BSL-1.0` | `https://sourceforge.net/p/octave/geometry/ci/default/tree/COPYING` |
 | `forge-matgeom` | `BSD-2-Clause-FreeBSD` | `https://sourceforge.net/p/octave/matgeom/ci/master/tree/LICENSE.txt` |
 | `forge-optim` | `GPL-3.0-or-later AND BSD-3-Clause AND LicenseRef-public-domain` | `https://octave.sourceforge.io/optim/COPYING.html` |
 | `forge-splines` | `GPL-3.0-or-later AND LicenseRef-public-domain` | `https://sourceforge.net/p/octave/splines/ci/default/tree/COPYING` |
-| 其余 8 × forge | `GPL-3.0-or-later` | 各自上游 COPYING 链接 |
-| `supply-msl` | `BSD-3-Clause` | MSL 上游 |
-| `supply-pyodide` | `BSD-3-Clause` | PyPI 上游 |
-| `LLVM-wasm v0.1.5` | `Apache-2.0 WITH LLVM-exception` | LLVM 上游 |
+| the other 8 × forge | `GPL-3.0-or-later` | each upstream COPYING link |
+| `supply-msl` | `BSD-3-Clause` | MSL upstream |
+| `supply-pyodide` | `BSD-3-Clause` | PyPI upstream |
+| `LLVM-wasm v0.1.5` | `Apache-2.0 WITH LLVM-exception` | LLVM upstream |
 
-**13/13 条真实许可全部有现成 `id` + `url`，且全部通过 V11**（2026-11-01 实测）。
-迁移不是重做调研，是转录。
+**13/13 real licenses all have a ready `id` + `url`, and all pass V11** (measured 2026-11-01).
+Migration is not redoing research; it is transcription.
 
 ---
 
-## 7. 复跑方式
+## 7. How to re-run
 
 ```bash
-# ① apt copyright 覆盖率（§2.1）
+# 1. apt copyright coverage (§2.1)
 ls -d /usr/share/doc/*/ | wc -l        # ⇒ 3265
 ls /usr/share/doc/*/copyright | wc -l  # ⇒ 3237
 
-# ② 迁移真值（§6.1）
+# 2. migration ground truth (§6.1)
 cd /mnt/hdd/zcode-projects/Octave-Extra-Content && python3 -c "
 import json,glob
 for f in sorted(glob.glob('packages/*.json')):
     d=json.load(open(f))
     print(d['name'], [l['label'] for l in d['upstream']['links'] if 'copyright' in l.get('icon','')])"
 
-# ③ 现状：manifest 无许可字段
+# 3. current state: the manifest has no license field
 gh release download forge-optim-1.6.3 -R ArchivalEra/Octave-Extra-Content \
   -p manifest.json -D /tmp/lic && python3 -c \
   "import json;print(sorted(json.load(open('/tmp/lic/manifest.json'))))"
 
-# ④ 校验器（V11 双向用例）
+# 4. the validator (V11 cases in both directions)
 python3 tools/check-release-v4.py --selftest   # ⇒ 42 PASS / 0 fail
 ```
 
 ---
 
-## 8. 实现与自证
+## 8. Implementation and self-proof
 
-| 件 | 增量 | 自证 |
+| Artifact | Delta | Self-proof |
 |---|---|---|
-| `tools/check-release-v4.py` | V10 接受 2\|3；V11 + `parse_spdx` | 42 PASS / 0 FAIL |
-| `scripts/sync-catalogue.py` | G5 收双 schema；G7 | 18 PASS / 0 FAIL |
-| `scripts/build-site.py` | 页面已标 AGPL；可加许可列 | 13 PASS / 0 FAIL |
+| `tools/check-release-v4.py` | V10 accepts 2\|3; V11 + `parse_spdx` | 42 PASS / 0 FAIL |
+| `scripts/sync-catalogue.py` | G5 takes both schemas; G7 | 18 PASS / 0 FAIL |
+| `scripts/build-site.py` | the page already declares AGPL; a license column can be added | 13 PASS / 0 FAIL |
 
-三档自证齐备（正常不报 / 该报必报 / 空输入必报）；失败信息点名 entry。
+All three self-proof tiers are in place (passes when it should / fails when it should / fails on empty input); failure messages name the entry.
 
 ---
 
-## 9. 被否的方案（防将来重开）
+## 9. Rejected designs (to prevent them being reopened)
 
-| 方案 | 否决判据 |
+| Design | Rejection criterion |
 |---|---|
-| **DEP-5 式 `Files:` glob + first-match-wins** | 客户端要重实现匹配器 + 优先级 + 命名空间；三个独立实现必然分歧。真实数据不支持（8/13 单一许可） |
-| **三态 `status: declared/unstated/refused` + `reason`** | **把「不知道」变成下载路径上的闸门**：`unstated` 时客户端要拒绝解包。违反「人家只想下个包一条链接」。而且「不知道」的正确处置是**不上架**，不是让客户端处理 |
-| **`provenance` 见证链（anchor + sha256 + source 白名单 + basis）** | 意图是「证明声明真实」，实际只证明了「有份文件在这儿」。manifest 复杂了一个数量级，客户端多了"必须检查"的假义务。**协议证明不了真实性，别假装能。** |
-| **`amends` 许可修订锚** | 为「补标许可不动字节」设计的可证伪断言。但重发 manifest 本来就只换 manifest.json、asset 不动 —— `amends` 是给一件**已经成立**的事加证明 |
-| **完整 `TermNode` 结构树（8 种 op）** | 对真实数据是过度设计；`render` 文法要写死维护，成为新的漂移面。**结果所有实现都得解析它才能读懂** |
-| **每 entry 一个 license（无默认）** | 45 个分片写 45 次同一事实；v4 §2.2 已批判同类错误 |
-| **catalogue 存完整许可正文** | 第二个产地，必然漂移 |
-| **允许无许可的 release 上架** | 违反「坏的从未上架」 |
-| **只写 SPDX id、不要求 url** | 各家正文不同（`optim` 的 COPYING 含附加条款）、且会换代；只写 id 等于把「当前正文」换成一个会过期的字符串。用户裁定：「改成指向链接」 |
-| **把许可全文作为 release asset 强制分发** | 16 个 release 各存一份 GPL 副本；且 `url` 已能指回权威正文。全文可作可选 `role:"license"` entry，但不强制 |
+| **DEP-5 style `Files:` glob + first-match-wins** | the client would have to reimplement the matcher + precedence + namespaces; three independent implementations would inevitably diverge. The real data does not support it (8/13 single license) |
+| **three-state `status: declared/unstated/refused` + `reason`** | **it turns "not known" into a gate on the download path**: on `unstated` the client would have to refuse to unpack. Violates the rule that someone who wants a package wants one link to download it. And the correct handling of "not known" is **not listing**, not making the client deal with it |
+| **`provenance` witness chain (anchor + sha256 + source allowlist + basis)** | the intent was to prove the declaration true; in practice it only proved that there is a file here. The manifest grew by an order of magnitude and the client acquired a false obligation to check. **The contract cannot prove truth; do not pretend it can.** |
+| **`amends` license revision anchor** | a falsifiable assertion designed for adding the license without touching bytes. But reissuing a manifest already only swaps manifest.json, assets untouched — `amends` adds proof to something that **already holds** |
+| **a full `TermNode` structure tree (8 ops)** | over-design for the real data; the `render` grammar would have to be frozen and maintained, becoming a new drift surface. **And every implementation would have to parse it to understand anything** |
+| **one license per entry (no default)** | 45 chunks would write the same fact 45 times; v4 §2.2 already criticised the same class of error |
+| **catalogue stores the full license text** | a second place where it lives, and it will inevitably drift |
+| **allow releases without a license to be listed** | violates the rule that the bad ones never get listed |
+| **require only the SPDX id, not the url** | each project's text differs (`optim`'s COPYING carries additional terms) and is replaced across generations; an id alone replaces the current text with a string that will expire. The user's ruling: point at a link instead |
+| **ship the full license text as a mandatory release asset** | 16 copies of the GPL, one per release; and `url` can already point back at the authoritative text. The full text may be an optional `role:"license"` entry, but is not mandatory |
 
 ---
 
-## 10. 一句话收口
+## 10. One-sentence close
 
-> **许可是一行元数据，不是一个协议层。**
-> 字节下载路径不认识它；manifest 展示它；catalogue 用它决定收不收。
-> 任何让「下载一个包」多一步的设计，都是偏离。
+> **A license is one line of metadata, not a protocol layer.**
+> The byte download path does not know it; the manifest displays it; the catalogue uses it to decide whether to list.
+> Any design that adds a step to downloading one package is a deviation.

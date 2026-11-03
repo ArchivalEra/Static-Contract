@@ -1,280 +1,302 @@
-# 发布契约（Release Contract）设计 · v0 草案
+# Release Contract Design · v0 draft
 
-> ## ⛔ DEPRECATED — 历史文档，不是权威（2026-11-02 标注）
+> ## DEPRECATED — historical, not authoritative (marked 2026-11-02)
 >
-> 本文**从未投递、从未进任何 schema、从未推广**，已被后续版本取代。
-> **现行权威 = `specs/2026-10-30-release-contract-v4.md`（V1–V10 基础条款）
-> + `specs/2026-11-01-release-contract-v1.1-license.md`（V11 许可，schema 3）**。
-> 保留本文的唯一理由是**被否方案的判据**（防止将来重开）——不要照它实现。
+> Never delivered, never entered any schema, never promoted. Superseded.
+> **Current authority: `2026-10-30-release-contract-v4.md` (V1–V10) plus
+> `2026-11-01-release-contract-v1.1-license.md` (V11, schema 3).**
+> Kept only for the rejection criteria (so they are not re-opened). Do not implement from it.
 
-> **状态**：草案（供用户审）。**未投递、未进任何 schema、未推广**。
-> **设计依据**：本仓、宿主、OM、UI 四个仓的产物实物 + 2026-10-30 线上实测。
-> **术语**：按 `codebase-design` 的 module / interface / seam / adapter / depth / leverage。
-
----
-
-## 0. 为什么需要它（先认前一批的错）
-
-我 `109`/`110`/`113` 在没有 manifest 设计的情况下推广了 sidecar 压缩。**这是不负责的**，
-用户批评正确。三个真问题：
-
-1. **没有单一身份对象**：`.wasm` / `.wasm.gz` / `.wasm.br` 三个字节，谁是谁、
-   `Content-Encoding` 该是什么、消费端拿到的是哪一层——**没有任何地方声明**；
-2. **与「从源码构建契约」冲突**（`STATE.md:145` Q3 裁决）：`versions[]` 的
-   `fromSource` 语义是「同一版的两种取得路径」，而 sidecar 引入了**第三种取得路径**
-   （预压缩件），不纳入就会变成旁路；
-3. **与现有 Range 协议冲突**（用户点名）：想用「br/gzip 乱序多线程拉取」，
-   但没人说清 Range 打在哪一层、按什么切、怎么校验。
-
-⇒ 这三件事都必须由**一个发布契约**收口，而不是各仓各发一套。
+> **Status**: draft (for user review). **Not delivered, not in any schema, not promoted.**
+> **Design basis**: the actual artifacts of four repos — this repo, host, OM, UI — plus live
+> measurements on 2026-10-30.
+> **Terminology**: per `codebase-design`'s module / interface / seam / adapter / depth / leverage.
 
 ---
 
-## 1. 事实基础（全部实测，2026-10-30）
+## 0. Why it is needed (first, own the previous batch's mistakes)
 
-### 1.1 三个现有契约的实物形态
+In `109`/`110`/`113` I promoted sidecar compression without any manifest design. **That was
+irresponsible**, and the user's criticism was correct. Three real problems:
 
-| 契约 | 产地 | 载体 | 关键字段 |
+1. **No single identity object**: three byte streams — `.wasm` / `.wasm.gz` / `.wasm.br` — which
+   is which, what `Content-Encoding` should be, which layer the consumer receives — **declared
+   nowhere**;
+2. **Conflicts with the "build-from-source contract"** (`STATE.md:145` Q3 ruling): the
+   `fromSource` semantics of `versions[]` mean "two acquisition paths for the same version",
+   while sidecars introduce a **third acquisition path** (pre-compressed artifacts); left out,
+   it becomes a bypass;
+3. **Conflicts with the existing Range protocol** (the user named this): we want "br/gzip
+   out-of-order multi-threaded fetching", but nobody says which layer Range applies to, how to
+   slice, or how to verify.
+
+=> All three must be closed by **one release contract**, not by each repo shipping its own.
+
+---
+
+## 1. Factual basis (all measured, 2026-10-30)
+
+### 1.1 The physical shape of the three existing contracts
+
+| Contract | Origin | Carrier | Key fields |
 |---|---|---|---|
-| **内容契约** | 本仓（语义）/ 宿主（schema） | `content-list.json`（schema 2） | `form`(6 形态) / `content` / `consumer` / `versions[]`(3 不变量) / `files[]` / `kind` / `role` / `arch` / `sha256` / `size` / `deps` |
-| **引擎契约** | 宿主 | `octave.build.json`（schema 1） | `tool` / `build` / `declared` / `measured` / `inputs` / `notes` / `verdict` / `mismatches` / `checked` |
-| **部署契约** | UI（`deploy-contract.mjs`） | 构建期注入 + `pages.yml` | base 前缀 / JS 字面量重写 / `<meta site-base>` / 5MB 分片 shim（**注释承诺**） |
+| **Content contract** | this repo (semantics) / host (schema) | `content-list.json` (schema 2) | `form` (6 forms) / `content` / `consumer` / `versions[]` (3 invariants) / `files[]` / `kind` / `role` / `arch` / `sha256` / `size` / `deps` |
+| **Engine contract** | host | `octave.build.json` (schema 1) | `tool` / `build` / `declared` / `measured` / `inputs` / `notes` / `verdict` / `mismatches` / `checked` |
+| **Deploy contract** | UI (`deploy-contract.mjs`) | build-time injection + `pages.yml` | base prefix / JS literal rewriting / `<meta site-base>` / 5MB chunked-fetch shim (**a comment promise**) |
 
-**已验证的断点**：UI `deploy-contract.mjs:47` 注释写「5MB 分片取数 shim：整包 GET →
-Range 分片（3 片并行、按序拼接）」，但**产物里没有该实现**（我 grep `dist/` 全树，
-`Range` 命中 1047 次全是 `RangeError` 等非 HTTP 语义）。⇒ **这个 shim 是注释承诺，未实装**。
+**A verified break**: the UI's `deploy-contract.mjs:47` comment says "5MB chunked-fetch shim:
+whole-package GET -> Range chunks (3 chunks in parallel, concatenated in order)", but **the
+artifact contains no such implementation** (I grepped the whole `dist/` tree; the 1047 `Range`
+hits are all `RangeError` and other non-HTTP uses). => **That shim is a comment promise, never
+implemented.**
 
-### 1.2 ★ 线上 Range 的真实行为（本次最关键实测）
+### 1.2 Live Range behavior (the most important measurement of this round)
 
 ```
-GET  octave.wasm + Range: bytes=0-1023        ⇒ 200 OK      （不支持 Range！）
-GET  omc.wasm.gz + Range: bytes=0-1023        ⇒ 206, 1024 B （支持）
-GET  omc.wasm.gz + Range: bytes=1000000-1001023 ⇒ 206, 1024 B（真分片，内容不同）
+GET  octave.wasm + Range: bytes=0-1023        => 200 OK      (Range not supported!)
+GET  omc.wasm.gz + Range: bytes=0-1023        => 206, 1024 B (supported)
+GET  omc.wasm.gz + Range: bytes=1000000-1001023 => 206, 1024 B (real chunking, different content)
 ```
 
-**结论：EdgeOne 的 Range 只在「已压缩的 sidecar」上工作，在原始未压缩件上不支持。**
+**Conclusion: EdgeOne's Range works only on "already-compressed sidecars", not on raw
+uncompressed artifacts.**
 
-### 1.3 ★ 乱序分片 + 还原全链路验证（我实测通过）
+### 1.3 Out-of-order chunking + full reconstruction chain (I verified it end to end)
 
-对 `OpenModelicaCompiler_bg.wasm.gz`（20,895,435 B）按 5 MiB 切片，
-**逆序**（chunk3 → chunk2 → chunk1 → chunk0）拉取，然后按序拼接：
+For `OpenModelicaCompiler_bg.wasm.gz` (20,895,435 B), sliced at 5 MiB, fetched **in reverse
+order** (chunk3 -> chunk2 -> chunk1 -> chunk0), then concatenated in order:
 
 ```
 chunk3: 5,166,795 B 206   chunk2: 5,242,880 B 206
 chunk1: 5,242,880 B 206   chunk0: 5,242,880 B 206
-merged: 20,895,435 B  ← 与 Content-Length 精确相等
-gunzip → sha256 = 8287589ebdb53b4cc37c337c2ae88f798d8889f7  ← 与产品 sha 逐字一致
+merged: 20,895,435 B  <- exactly equal to Content-Length
+gunzip -> sha256 = 8287589ebdb53b4cc37c337c2ae88f798d8889f7  <- byte-for-byte equal to the product sha
 ```
 
-⇒ **你要的「br/gzip 乱序多线程拉取」在技术上完全可行，且我已端到端验证。**
+=> **The requested "br/gzip out-of-order multi-threaded fetching" is entirely feasible
+technically, and I have verified it end to end.**
 
-### 1.4 站管的旧结论已过期（必须更正）
+### 1.4 The site admin's old conclusion is stale (must be corrected)
 
-`SITE-ADMIN-REQUEST.md:125` 记着：
+`SITE-ADMIN-REQUEST.md:125` records:
 
-> 申请三（Range）——**接受现实，撤回申请**：你们的实测（**206 头声称分片却吐解压全体，
-> 头体不一致**）比 HANDOFF.md 的旧记录权威。分片 shim 现状：边缘 `Accept-Ranges: none`
-> 下 shim 走整包回落。
+> Request three (Range) — **accept reality, withdraw the request**: your measurements (**the 206
+> header claims a chunk but emits the whole decompressed body — header/body mismatch**) are more
+> authoritative than the old record in HANDOFF.md. Chunked shim status: under the edge's
+> `Accept-Ranges: none` the shim falls back to the whole package.
 
-**那次测的是原始 `.wasm`**（或经边缘解压的响应）——在那种情况下确实「头体不一致」。
-**但 sidecar `.gz` 上是真 206**（本次实测，字节精确、内容不同、拼接还原后 sha 一致）。
-⇒ **协议的每条判据都必须指明「打在哪一层」**，否则两方各测各的、结论永久冲突。
+**That measurement was against the raw `.wasm`** (or an edge-decompressed response) — in that
+case the "header/body mismatch" is indeed real. **But on the sidecar `.gz` it is a true 206**
+(this round's measurement: byte-exact, different content, sha matches after reconstruction).
+=> **Every criterion in the protocol must state "which layer it applies to"**, otherwise both
+sides measure different things and the conclusions conflict forever.
 
 ---
 
-## 2. 设计：发布契约
+## 2. Design: the release contract
 
-### 2.1 先说清「收谁」
+### 2.1 First, be clear about "what it takes in"
 
-| 现有契约 | 在发布契约里的位置 |
+| Existing contract | Its place in the release contract |
 |---|---|
-| 内容契约（`content-list`） | **上游**：声明"有什么、什么版本、能不能跑"。**不改字段**，只在条目上**引用**发布身份 |
-| 引擎契约（`octave.build.json`） | **上游**：声明"引擎产物怎么构建的、实测什么"。同样只**引用** |
-| 部署契约（base/shim） | **下游**：消费发布身份来定"从哪取、怎么拼" |
-| **发布契约（本设计）** | **中间层**：把「一个可交付字节对象」的身份说清 —— 与"内容语义"和"构建过程"都解耦 |
+| Content contract (`content-list`) | **Upstream**: declares "what exists, which version, whether it can run". **Fields unchanged**; entries merely **reference** the release identity |
+| Engine contract (`octave.build.json`) | **Upstream**: declares "how the engine artifact is built, what was measured". Likewise only **references** |
+| Deploy contract (base/shim) | **Downstream**: consumes release identity to decide "where to fetch from, how to assemble" |
+| **Release contract (this design)** | **Middle layer**: states the identity of "one deliverable byte object" — decoupled from both "content semantics" and "build process" |
 
-**关键判断（seam 的位置）**：发布契约的 seam 放在 **「字节对象身份」** 上，不放在
-「包」或「构建」上。理由（用 deletion test）：删掉它，内容契约就得自己描述压缩层
-（污染语义）、引擎契约就得重复描述 url/sha（两处漂移）、消费端就得各自猜
-`Content-Encoding`（UI 已经在猜）——**复杂度会散回三个调用方**，说明它挣到了自己。
+**The key judgement (where the seam goes)**: the release contract's seam goes on **"byte object
+identity"**, not on "package" or "build". Rationale (deletion test): delete it and the content
+contract has to describe the compression layer itself (polluting semantics), the engine contract
+has to duplicate url/sha (drift in two places), and consumers each have to guess
+`Content-Encoding` (the UI already guesses) — **the complexity scatters back to three callers**,
+which shows it earns its keep.
 
-### 2.2 接口（manifest 的形状）
+### 2.2 Interface (the shape of the manifest)
 
-一个 manifest 描述**一个不可变字节集**（一个 release）：
+One manifest describes **one immutable byte set** (one release):
 
 ```json
 {
   "schema": 1,
-  "id": "<repo>/<tag>",                     // 稳定身份，不可变
+  "id": "<repo>/<tag>",                     // stable identity, immutable
   "producer": { "repo": "ArchivalEra/OpenModelica-Full-Wasm", "commit": "<sha>" },
   "created": "2026-10-30T00:00:00Z",
   "assets": [
     {
       "name": "OpenModelicaCompiler_bg.wasm",
       "role": "engine",                      // engine | package | toolchain | data | docs
-      "form": "file",                        // 与内容契约同词表（file/tree/pkg/oct/octdir/js）
-      "bytes": 74579404,                     // 原始字节数（唯一权威）
-      "sha256": "8287589e…b001",             // 原始字节 sha（唯一 fail-closed 依据）
-      "encodings": {                          // ★ 本设计的核心：编码层是**子对象**，不是兄弟条目
+      "form": "file",                        // same vocabulary as the content contract (file/tree/pkg/oct/octdir/js)
+      "bytes": 74579404,                     // raw byte count (sole authority)
+      "sha256": "8287589e…b001",             // raw byte sha (sole fail-closed basis)
+      "encodings": {                          // core of this design: the encoding layer is a **child object**, not a sibling entry
         "gzip": { "url": "…wasm.gz", "bytes": 20895435, "sha256": "…" },
         "br":   { "url": "…wasm.br", "bytes": 13053436, "sha256": "…" }
       },
-      "range": {                              // ★ Range 能力声明（每层各自独立）
+      "range": {                              // Range capability declaration (independent per layer)
         "supported": true,
-        "granularity": 5242880,               // 建议切片粒度（5 MiB）
-        "basis": "encoded"                    // ★ 关键：Range 打在「编码后的字节」上
+        "granularity": 5242880,               // suggested slice granularity (5 MiB)
+        "basis": "encoded"                    // key point: Range applies to the **encoded bytes**
       },
       "contentType": "application/wasm",
-      "contentEncoding": {                    // 与 encodings 一一对应（HTTP 头用）
+      "contentEncoding": {                    // one-to-one with encodings (for HTTP headers)
         "gzip": "gzip", "br": "br"
       },
       "immutable": true,
-      "firstSeen": "2026-10-30T00:00:00Z"     // 防同名替换（OM v0.1.0 追加过 asset 的先例）
+      "firstSeen": "2026-10-30T00:00:00Z"     // guards against same-name replacement (OM v0.1.0 appended an asset once)
     }
   ]
 }
 ```
 
-### 2.3 五条不变量（fail-closed，校验器逐条判）
+### 2.3 Five invariants (fail-closed, checked one by one by the validator)
 
-| # | 不变量 | 为什么 |
+| # | Invariant | Why |
 |---|---|---|
-| **I1** | `encodings.*.sha256` 是**该编码字节的 sha**，不是原始字节的 | 消费端拿到的就是编码字节；用原始 sha 校验必然失败 |
-| **I2** | `bytes`（原始）是**唯一权威**；`encodings.*.bytes` 是派生量，且校验器**必须能复算验证**（gunzip/解 br 后等于 `bytes` 且 sha 等于 `sha256`） | 防"声明一个没压过的 sidecar 骗过体积检查" |
-| **I3** | `range.basis` ∈ {`encoded`, `identity`, `none`}，**缺省 `none`** | 实测：EdgeOne 在原始件上 `200`、在 sidecar 上 `206` ⇒ 必须显式声明打哪层，不许猜 |
-| **I4** | `range.supported=true` 时，`granularity` 必填且 `≤ 2^31-1` | 分片号要被 `Range: bytes=a-b` 表达 |
-| **I5** | **同名 asset 的 `sha256` 一旦见报，永不许变**；变了 = 新 `id` 或新 `name` | OM 的先例：`v0.1.0-wasm32` **追加**过 asset（合法），但覆盖同名不合法 |
+| **I1** | `encodings.*.sha256` is the sha of **the encoded bytes**, not of the raw bytes | The consumer receives the encoded bytes; verifying against the raw sha fails by construction |
+| **I2** | `bytes` (raw) is the **sole authority**; `encodings.*.bytes` is a derived quantity, and the validator **must be able to recompute and verify it** (after gunzip/brotli-decode it equals `bytes` and its sha equals `sha256`) | Prevents "declaring an uncompressed sidecar to fool the size check" |
+| **I3** | `range.basis` ∈ {`encoded`, `identity`, `none`}, **defaulting to `none`** | Measured: EdgeOne returns `200` on the raw artifact and `206` on the sidecar => the layer must be declared explicitly, never guessed |
+| **I4** | When `range.supported=true`, `granularity` is required and `≤ 2^31-1` | The chunk index must be expressible in `Range: bytes=a-b` |
+| **I5** | **Once an asset's `sha256` under a given name is published, it may never change**; if it changes = new `id` or new `name` | OM precedent: `v0.1.0-wasm32` **appended** assets (legal), but overwriting the same name is not |
 
-### 2.4 与「从源码构建契约」的关系（用户点名的冲突）
+### 2.4 Relation to the "build-from-source contract" (the conflict the user named)
 
-现状（`STATE.md:145` Q3 裁决）：
+Current state (`STATE.md:145` Q3 ruling):
 
-> `ways` 是派生不是记录；**不引入 `flavor`**（预编译与否是同一版的两种取得路径，
-> 不是版本的味道）。
+> `ways` is derived, not recorded; **do not introduce `flavor`** (precompiled or not are two
+> acquisition paths for the same version, not flavors of the version).
 
-**发布契约不破坏这条，而是补上第三条路径的正名**：
+**The release contract does not break this; it legitimizes the third path**:
 
 ```json
-// 内容契约的条目（不改字段，只加一个引用）
+// an entry in the content contract (fields unchanged, one reference added)
 { "name": "statistics", "version": "1.7.7",
-  "acquisition": {                          // ★ 新增：取得路径，不是版本味道
+  "acquisition": {                          // new: acquisition path, not a version flavor
      "source":   { "releaseRef": "octave-extra-content/statistics-src-1.7.7" },
      "prebuilt": { "releaseRef": "octave-host/oct-1.7.7-wasm32", "arch": "wasm32" }
   }
 }
 ```
 
-**判据**：`fromSource` 保持原义（"这一版能不能从源码构建"），`acquisition` 回答
-"从哪取字节"，**两者正交**。发布契约是 `releaseRef` 的**定义处**（一个 ref 指向一个
-manifest），内容契约的 `url`/`sha256`/`size` 仍是**选中路径的投影**（不变量②照旧：
-顶层标量必须逐字等于某候选）。
+**Criterion**: `fromSource` keeps its original meaning ("can this version be built from
+source"), `acquisition` answers "where the bytes come from", and **the two are orthogonal**.
+The release contract is the **definition site** of `releaseRef` (one ref points to one
+manifest); the content contract's `url`/`sha256`/`size` remain the **projection of the selected
+path** (invariant 2 as before: top-level scalars must equal some candidate exactly).
 
-⇒ **冲突解决方式：不合并、不替代，而是分层** —— 版本语义（内容契约）/
-取得路径（acquisition）/ 字节身份（发布契约）三层，各自单一职责。
+=> **Resolution: do not merge, do not replace — layer them** — version semantics (content
+contract) / acquisition path (acquisition) / byte identity (release contract), each with a
+single responsibility.
 
-### 2.5 与「Range 协议」的关系（用户点名想沿用）
+### 2.5 Relation to the "Range protocol" (the user wants to keep it)
 
-**沿用，但要加一条修正**：现有 shim 注释说「整包 GET → Range 分片」，
-实测**整包不支持 Range、sidecar 才支持**。所以协议改成：
+**Keep it, with one correction**: the existing shim comment says "whole-package GET -> Range
+chunks", but measurements show the **whole package does not support Range, only the sidecar
+does**. So the protocol becomes:
 
 ```
-1) 取 manifest，选 encodings 里的一层（优先 br，回落 gzip，最后 identity）
-2) 若 range.supported=true 且 range.basis="encoded"：
-     对 sidecar URL 发 N 个并发 Range 请求（乱序），按 offset 落盘
-3) 拼完对「编码字节」核 encodings[enc].sha256   ← 第一道
-4) 解码（gunzip / brotli）
-5) 对「原始字节」核 sha256 + bytes                ← 第二道（I2）
+1) Fetch the manifest, choose one layer from encodings (br first, gzip fallback, identity last)
+2) If range.supported=true and range.basis="encoded":
+     issue N concurrent Range requests against the sidecar URL (out of order), write by offset
+3) After assembly, verify the **encoded bytes** against encodings[enc].sha256   <- check one
+4) Decode (gunzip / brotli)
+5) Verify the **raw bytes** against sha256 + bytes                             <- check two (I2)
 ```
 
-**两道校验缺一不可**：第一道防分片拼错（乱序并发最常见的错），第二道防解码错/装错层。
+**Both checks are indispensable**: the first catches mis-assembled chunks (the most common
+error in out-of-order concurrency), the second catches decode errors and wrong-layer assembly.
 
-**为什么 `basis: "encoded"` 是默认建议**：
-- 实测原始件 Range 根本不工作（`200` 而非 `206`）；
-- 编码后的 sidecar 体积小 3–5 倍 ⇒ 分片数少、并发效率高、失败重试代价低；
-- 解码是本地 CPU，比多拉 3–5 倍字节便宜得多。
+**Why `basis: "encoded"` is the recommended default**:
+- Measured: Range on the raw artifact does not work at all (`200` instead of `206`);
+- The encoded sidecar is 3–5x smaller => fewer chunks, higher concurrency efficiency, cheaper
+  retries;
+- Decoding is local CPU, far cheaper than fetching 3–5x the bytes.
 
-**代价（如实）**：必须**全部分片到齐才能解码**（压缩流不可随机访问）。
-⇒ 所以「乱序」只买到**并行带宽**，买不到「先解压先可用」。
+**Cost (stated honestly)**: **all chunks must arrive before decoding** (a compressed stream is
+not randomly accessible). => So "out of order" buys **parallel bandwidth** only, not
+"decode-as-it-arrives".
 
-### 2.6 三份身份（呼应我 `113` 的建议，此处正式化）
+### 2.6 The three identities (echoing my `113` suggestion, formalized here)
 
-| 层 | 谁算 | 谁核 | 用途 |
+| Layer | Who computes | Who verifies | Purpose |
 |---|---|---|---|
-| 原始 `bytes`+`sha256` | **生产者**（构建产线） | 消费端（解码后） | fail-closed 唯一依据 |
-| `.gz` `bytes`+`sha256` | 生产者（CI 压完立刻算） | 消费端（分片拼完后） | 分片完整性 |
-| `.br` `bytes`+`sha256` | 生产者（CI q11 压完立刻算） | 消费端 | 同上 |
+| raw `bytes`+`sha256` | **Producer** (build pipeline) | Consumer (after decode) | sole fail-closed basis |
+| `.gz` `bytes`+`sha256` | Producer (computed right after CI compression) | Consumer (after chunk assembly) | chunk integrity |
+| `.br` `bytes`+`sha256` | Producer (computed right after CI q11 compression) | Consumer | same as above |
 
-**纪律**：**分发方（站侧）只核对，不另算**（分发方算出来的值不是权威，
-与生产者不一致时报 red，不是自己更新）。
+**Discipline**: **the distributor (site side) only verifies, never recomputes** (a value
+computed by the distributor is not authoritative; on mismatch with the producer it raises red,
+it does not update itself).
 
-### 2.7 压缩策略（我 `113` 的建议，此处收敛为契约条款）
+### 2.7 Compression policy (my `113` suggestion, converged into contract clauses)
 
-| 条件 | gzip | br | 依据（实测） |
+| Condition | gzip | br | Basis (measured) |
 |---|---|---|---|
-| `bytes ≥ 1 MiB` | 必出 `-9` | **必出 q11** | br11 省 gzip-9 的 37.54%（omc.wasm）/ 34.95%（octave.wasm） |
-| `bytes < 1 MiB` | 出 `-6` 即可 | 可选 | 小件 br header 开销吃掉收益 |
-| 已压格式（`.gz/.zip/.whl/.woff2/.png/.jpg`） | **不出** | **不出** | 白工；UI 现脚本踩坑：zip 23MiB + whl 13MiB + tar.gz 79MiB 被重复压 |
-| 成本 | 5.0s / 74.5MB | **148.5s / 74.5MB** | q11 必须 CI 一次 + 永久缓存 |
+| `bytes ≥ 1 MiB` | `-9` mandatory | **q11 mandatory** | br11 saves 37.54% over gzip-9 (omc.wasm) / 34.95% (octave.wasm) |
+| `bytes < 1 MiB` | `-6` suffices | optional | for small files the br header overhead eats the gain |
+| Already-compressed formats (`.gz/.zip/.whl/.woff2/.png/.jpg`) | **none** | **none** | wasted work; the current UI script already hit this: zip 23MiB + whl 13MiB + tar.gz 79MiB compressed twice |
+| Cost | 5.0s / 74.5MB | **148.5s / 74.5MB** | q11 must run once in CI and be cached permanently |
 
 ---
 
-## 3. 谁产谁核（角色分工，不涉及内容语义）
+## 3. Who produces, who verifies (role split, no content semantics involved)
 
-| 角色 | 做什么 | 不做什么 |
+| Role | Does | Does not |
 |---|---|---|
-| **各仓（生产者）** | 产出 release + manifest + `.gz`/`.br` sidecar；**自己算三份 sha** | 不定义别家的字节 |
-| **站侧（分发）** | 搬运 + 不可变缓存 + 索引；**只核对** manifest 里的 sha | 不另算 sha、不改 manifest、不判断包能不能跑 |
-| **消费端（UI/宿主）** | 读 manifest → 选编码 → 分片拉 → 两道校验 | 不猜 Content-Encoding、不自己拼 URL |
-| **本仓** | 内容语义（四态/版本策略/`consumer`/`files[]`）；**发布契约存副本** | 不产字节、不裁决分发实现 |
+| **Each repo (producer)** | Produces the release + manifest + `.gz`/`.br` sidecars; **computes its own three shas** | Does not define other repos' bytes |
+| **Site side (distribution)** | Moves bytes + immutable cache + index; **only verifies** the shas in the manifest | Does not recompute shas, does not modify the manifest, does not judge whether a package runs |
+| **Consumers (UI/host)** | Reads manifest -> picks encoding -> chunked fetch -> two checks | Does not guess Content-Encoding, does not build URLs itself |
+| **This repo** | Content semantics (four states/version policy/`consumer`/`files[]`); **keeps a copy of the release contract** | Does not produce bytes, does not adjudicate the distribution implementation |
 
 ---
 
-## 4. 未决问题（我不擅自定，需用户/两家裁）
+## 4. Open questions (I do not decide these unilaterally; user / both parties must rule)
 
-| # | 问题 | 我的倾向 | 判据 |
+| # | Question | My inclination | Criterion |
 |---|---|---|---|
-| **U1** | manifest 是**每仓一份**还是**集群一份聚合**？ | **每仓一份**（`<repo>/<tag>/manifest.json`），站侧聚合索引 | 生产者产权清晰；聚合是分发方的活 |
-| **U2** | `encodings` 缺省策略：**全出**还是**按需**？ | 大件全出、小件只 gzip | §2.7 实测 |
-| **U3** | 内容契约要不要加 `acquisition` 字段？ | **要**，但**等 manifest 落地后再加**（先有定义才有引用） | 避免第二次"无定义先推广" |
-| **U4** | `range.granularity` 固定 5 MiB 还是可配？ | **可配，默认 5 MiB** | EdgeOne "5MB 极其迅速"（用户原话）；但不同文件最优粒度可能不同 |
-| **U5** | `.br` 的 MIME/Content-Type | 与原始件同 `contentType` + `Content-Encoding: br` | HTTP 标准；实测线上 `.wasm.gz` 返 `application/gzip` 是**错的**（会让消费端拿到压缩字节当 wasm） |
+| **U1** | Is the manifest **one per repo** or **one aggregated per cluster**? | **One per repo** (`<repo>/<tag>/manifest.json`), with the site aggregating an index | Producer ownership is clear; aggregation is the distributor's job |
+| **U2** | `encodings` default policy: **emit all** or **on demand**? | All for large artifacts, gzip only for small | §2.7 measurements |
+| **U3** | Should the content contract gain an `acquisition` field? | **Yes**, but **only after the manifest lands** (definition first, then reference) | Avoids a second "promote before defining" |
+| **U4** | Is `range.granularity` fixed at 5 MiB or configurable? | **Configurable, default 5 MiB** | EdgeOne is "extremely fast at 5MB" (the user's words); but the optimal granularity may differ per file |
+| **U5** | MIME/Content-Type for `.br` | Same `contentType` as the raw artifact + `Content-Encoding: br` | HTTP standard; measured: the live `.wasm.gz` returning `application/gzip` is **wrong** (it makes consumers treat compressed bytes as wasm) |
 
 ---
 
-## 5. 落地顺序（**不跳步**）
+## 5. Rollout order (**no skipping steps**)
 
 ```
-1. 用户审定本设计（现在）
-2. 生产 manifest 生成器 + 校验器（谁做？见 U1）      ← 先有工具
-3. 一个仓试点（建议 OM，它已有 release + 两个 asset）  ← 先有实物
-4. 站侧接入（它已经在建分发站，正好）                  ← 先有分发
-5. UI/宿主 消费端接入                                  ← 最后改消费端
-6. 内容契约加 acquisition 字段（引用已存在的 manifest）  ← 最后动语义层
+1. User approves this design (now)
+2. Build the manifest generator + validator (who does it? see U1)   <- tooling first
+3. Pilot in one repo (OM suggested; it already has a release + two assets) <- artifact first
+4. Site-side integration (they are already building the distribution site)  <- distribution first
+5. UI/host consumer integration                                      <- change consumers last
+6. Add acquisition to the content contract (referencing an existing manifest) <- touch semantics last
 ```
 
-**明确不做**：在 1–3 完成前，**不再推广任何压缩/分片策略**。这封信就是那个刹车。
+**Explicitly not doing**: until 1–3 are done, **do not promote any compression/chunking policy
+again**. This letter is that brake.
 
 ---
 
-## 6. 复跑方式
+## 6. How to reproduce
 
 ```bash
-# ① Range 只在 sidecar 上工作
+# (1) Range works only on sidecars
 curl -sI -H "Range: bytes=0-1023" https://isui.ren/repo/Octave/lanes/wasm32-final/octave.wasm | head -1   # 200
 curl -sI -H "Range: bytes=0-1023" https://isui.ren/repo/Octave/omc/OpenModelicaCompiler_bg.wasm.gz | head -1 # 206
 
-# ② 乱序分片 + 还原全链路（见 §1.3 的输出）
-#  chunk3..chunk0 逆序拉 → 按序拼接 → gunzip → sha256 = 8287589e…
+# (2) Out-of-order chunking + reconstruction (see the output in §1.3)
+#  fetch chunk3..chunk0 in reverse -> concatenate in order -> gunzip -> sha256 = 8287589e…
 
-# ③ br q11 收益
+# (3) br q11 gain
 python3 -c "
 import brotli,gzip,time
 raw=open('/mnt/hdd/antigravity-projects/Octave-UI/dist/omc/OpenModelicaCompiler_bg.wasm','rb').read()
 t=time.time();b=brotli.compress(raw,quality=11,lgwin=24);print('br11',len(b),f'{time.time()-t:.1f}s')
 t=time.time();g=gzip.compress(raw,9);print('gz9',len(g),f'{time.time()-t:.1f}s')"
-#  ⇒ br11 13,053,436 (148.5s) / gz9 20,899,276 (5.0s)
+#  => br11 13,053,436 (148.5s) / gz9 20,899,276 (5.0s)
 
-# ④ 部署契约的 5MB shim 是注释承诺（未实装）
-grep -c "Range" /mnt/hdd/antigravity-projects/Octave-UI/dist/assets-loader.js   # 全是 RangeError，无 HTTP Range
-grep -n "5MB 分片取数 shim" /mnt/hdd/antigravity-projects/Octave-UI/scripts/deploy-contract.mjs
+# (4) The deploy contract's 5MB shim is a comment promise (not implemented)
+grep -c "Range" /mnt/hdd/antigravity-projects/Octave-UI/dist/assets-loader.js   # all RangeError, no HTTP Range
+# the shim comment in the source is a CJK string; grep by "shim" to find it
+grep -n "shim" /mnt/hdd/antigravity-projects/Octave-UI/scripts/deploy-contract.mjs
 ```

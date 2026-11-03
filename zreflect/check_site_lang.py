@@ -92,6 +92,47 @@ def check_html_lang(html):
     return out
 
 
+# 发布到站点的 .md 必须全英文、无表情、无圈号（用户裁定 2026-11-03）。
+# `docs/rulings.md` 例外：它**不进站点**（保留用户中文原话，那是判据的历史证据）。
+EMOJI = re.compile(r"[\U0001F300-\U0001FAFF\u2600-\u27BF\u2B50\u2714\u2716"
+                   r"\u26A1\u2705\u274C\u26A0\uFE0F\u267B\u2611\u2612]")
+CIRCLED = re.compile(r"[\u2460-\u24FF\u2776-\u2793]")
+
+
+def check_published_md(dist_dir):
+    """H8：产物里的 .md 不得含 CJK / emoji / 圈号。
+
+    来源（用户裁定 2026-11-03）：「站上的那些包括 v1.1 契约都还是有中文有表情符号的版本」。
+    H1 只查 index.html，契约正文一路带中文发布到三个站 —— 那是系统性的漏。
+    """
+    probs = []
+    mds = []
+    for root, _dirs, files in os.walk(dist_dir):
+        for f in files:
+            if f.endswith(".md"):
+                mds.append(os.path.join(root, f))
+    if not mds:
+        return ["H8 产物里没有 .md —— 未查不是通过"]
+    for p in sorted(mds):
+        rel = os.path.relpath(p, dist_dir)
+        t = open(p, encoding="utf-8", errors="replace").read()
+        # 豁免机器块：AUTO:FACTS / AUTO:GATES 由 vendored 平台渲染（中文模板），
+        # 那是**生成物不是散文**。改渲染器等于 fork 上游 Einfacht —— 不做。
+        # 判据：只查块外的正文。
+        for begin, end in (("<!-- AUTO:FACTS -->", "<!-- /AUTO:FACTS -->"),
+                           ("<!-- AUTO:GATES -->", "<!-- /AUTO:GATES -->")):
+            while begin in t and end in t:
+                a = t.index(begin)
+                b = t.index(end, a) + len(end)
+                t = t[:a] + t[b:]
+        cjk = len(CJK.findall(t))
+        em = len(EMOJI.findall(t))
+        nu = len(CIRCLED.findall(t))
+        if cjk or em or nu:
+            probs.append("H8 %s 含 CJK=%d emoji=%d 圈号=%d" % (rel, cjk, em, nu))
+    return probs
+
+
 def check_links(html, dist_dir):
     """H5：页面里每个相对链接必须指向产物内真实存在的文件。
 
@@ -356,6 +397,9 @@ def main():
             link_probs, n_links = check_links(html, dist_dir)
             probs += link_probs
             print("H5：检查了 %d 个产物内相对链接" % n_links)
+            h8 = check_published_md(dist_dir)
+            probs += h8
+            print("H8 发布 md 语言检查: %s" % ("全部英文" if not h8 else "%d 个文件不合格" % len(h8)))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
