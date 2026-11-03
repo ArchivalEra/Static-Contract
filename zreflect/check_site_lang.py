@@ -490,6 +490,11 @@ def main():
                 rel_by_chan[ch.get("name")] = doc.get("files") or []
             except (ValueError, UnicodeDecodeError):
                 rel_by_chan[ch.get("name")] = []
+        # ⚠️ 每个通道**只查它自己清单里的文件**。
+        # 曾把所有通道的清单取并集去查每一条 —— 那样「某通道还没更新」
+        # 会被误判成「其它通道有死链」（实测：EO 的 files.json 还是旧的 16 项，
+        # 拿它去查刚收窄到 7 项的 Pages ⇒ 报 10 条假死链）。
+        # 跨通道版本不一致是**部署滞后**，不是死链；H6 的判据是「文件在不在」。
         rel = sorted({x for v in rel_by_chan.values() for x in v})
         if not rel and html:
             # 本地无清单时回落到 HTML 链接（并明说覆盖面变窄）
@@ -503,7 +508,16 @@ def main():
             probs += h7
             print("H7 catalogue base 可达性: %s" % ("全部可达" if not h7 else h7[0][:80]))
         if chans and rel:
-            o_probs, stats = check_channels_online(chans, rel)
+            # 逐通道用各自的清单：通道自己声明有哪些文件，就只查这些。
+            o_probs, stats = [], {}
+            for ch in chans:
+                own = rel_by_chan.get(ch.get("name")) or []
+                if not own:
+                    print("⚠ H6 %s 无 files.json 清单 —— 跳过（未查不是通过）" % ch.get("name"))
+                    continue
+                p_, st_ = check_channels_online([ch], own)
+                o_probs += p_
+                stats.update(st_)
             probs += o_probs
             for k, v in stats.items():
                 print("H6 %s: checked=%d dead=%d unreachable=%d"
