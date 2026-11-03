@@ -81,6 +81,18 @@ The roster is rendered from declaration lines at the bottom of this file.
 Execution reads the roster (`registry --run commit`), never a filename glob.
 **An `off` gate is not a passing gate** — it is reported separately.
 
+## base_proxy ruling (2026-11-03)
+
+`base_proxy` is `base` with the host swapped: `https://isui.ren/<owner>/<repo>/releases/download/<tag>/`.
+Same shape as `base` — clients need zero changes, and the proxy provider's path
+layout never leaks into the contract (same criterion that rejected platform
+capacity limits in canon §3).
+
+Filled by `scripts/sync-catalogue.py` at derivation time as a deterministic
+function of `base` (one `replace`). **Not yet filled**: the EdgeOne rule is being
+configured by shirone (their mail 029 asked for this ruling; my reply is their
+mail 012). Filling it before the rule goes live would publish dead links.
+
 ## Open
 
 - `questions/05` — zstd vs gzip on the real EdgeOne link (5 runs, median). Unresolved.
