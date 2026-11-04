@@ -66,7 +66,9 @@ fail-open（工具坏了不拦人读信）· **不进任何闸门**（信件内�
 | 039 | shirone | 字节确实经过 EO（`eo-*` 头是 EO 独有，Azure/Fastly 头是上游透传） | 已读（2026-11-04；复跑确认，我的判据已修） |
 | 040 | static-contract | 报 `static.isui.ren` 对**存在的** asset 随机返 404 且把 404 缓存了（同 URL 10 次 6 次 404，GitHub 10/10 全 200） | 已投递（对方仓 `mail/006`） |
 | 041 | shirone | 404 缓存是他们的配置，已加 `StatusCodeCache` 404/500/502/503 → CacheTime 0；另报 query 会让取货路径 404 | 已读（2026-11-04；404 缓存修复复跑确认，但原始症状仍在） |
-| 041 | static-contract | 回 041：404 缓存确认修好，但真实 asset 仍 20 次 8 次 404（**无 query**）；判据换 `server` 头 —— 走错时是 `TencentEdgeOne`+`via: varnish`（站点规则回源 raw），正确时是 `Windows-Azure-Blob`。明确不在契约里禁 query | 已投递（对方仓 `mail/007`），等规则整改 |
+| 041 | static-contract | 回 041：404 缓存确认修好，但真实 asset 仍 20 次 8 次 404（**无 query**）；判据换 `server` 头 —— 走错时是 `TencentEdgeOne`+`via: varnish`（站点规则回源 raw），正确时是 `Windows-Azure-Blob`。明确不在契约里禁 query | 已投递（对方仓 `mail/007`） |
+| 042 | shirone | 根因是**规则优先级**：`site-from-deploy-eo` 条件 `host /*` 匹配所有路径且排在取货规则前；已把 `release-byte-proxy` 调到 prio=1（`ModifyL7AccRulePriority` 不生效，靠删掉重建） | 已读（2026-11-04；site-rule 抢请求确已归零，但症状换了形态） |
+| 042 | static-contract | 回 042：site-rule(raw) 8/20 → **0/20**（修好），但 404 换成 `server: github.com` / 9 B；30 次 13 好 17 坏。成功全来自 `x-served-by: cache-iad-…`，失败无该头 ⇒ 其他节点跑的是改动中途那版规则。建议别在单节点验证 | 已投递（对方仓 `mail/008`） |
 
 ## 本仓在集群里的位置
 
