@@ -140,7 +140,44 @@ def reasons_en(reasons):
     return out
 
 
-def verify_entry(repo, rel, manifest_bytes, assets_by_name, check_runner):
+# license.url 内容判据（shirone mail/037 §3 提、extra-content mail/027 §3 附议，我裁）
+# 判据：url 正文里有没有**实质许可声明**。太短或只有占位句 ⇒ 记 warning，不 fail。
+# ⚠️ 边界（必须写进代码，否则将来会被当成保证）：这条只证明「点进去能看到点东西」，
+#    不能证明许可写对了。V11 只查形状，这就是它抓不住「200 但空」的原因。
+LICENSE_TOKENS = (
+    "GNU GENERAL PUBLIC LICENSE", "GNU AFFERO GENERAL PUBLIC LICENSE",
+    "Apache License", "Mozilla Public License", "Redistribution and use",
+    "Permission is hereby granted", "BSD", "MIT", "GPL", "LGPL", "AGPL",
+    "public domain", "OFL", "BSL",
+)
+LICENSE_MIN_BODY = 200      # 低于这个字节数几乎必然是导航壳/占位页
+
+
+def _license_url_warning(url, fetch):
+    """返回 warning 字符串或 None。**永不抛异常** —— 内容判据不该阻断派生。"""
+    try:
+        body = fetch(url)
+    except Exception as e:                                  # noqa: BLE001
+        return "license.url 取不到: %s" % type(e).__name__
+    try:
+        text = body.decode("utf-8", "replace")
+    except Exception:                                        # noqa: BLE001
+        return "license.url 正文不是文本"
+    # 去标签后再判，避免命中 HTML 属性里的假词
+    import re as _re
+    plain = _re.sub(r"<script.*?</script>", " ", text, flags=_re.S | _re.I)
+    plain = _re.sub(r"<style.*?</style>", " ", plain, flags=_re.S | _re.I)
+    plain = _re.sub(r"<[^>]+>", " ", plain)
+    plain = _re.sub(r"\s+", " ", plain).strip()
+    if len(plain) < LICENSE_MIN_BODY:
+        return "license.url 正文仅 %d 字符（疑占位页）" % len(plain)
+    low = plain.lower()
+    if not any(t.lower() in low for t in LICENSE_TOKENS):
+        return "license.url 正文未出现任何已知许可声明"
+    return None
+
+
+def verify_entry(repo, rel, manifest_bytes, assets_by_name, check_runner, license_fetch=None):
     """验一条 release。返回 (entry or None, reasons)。
 
     `assets_by_name` = {name: {"digest": "sha256:...", "size": n}}
@@ -199,6 +236,12 @@ def verify_entry(repo, rel, manifest_bytes, assets_by_name, check_runner):
                 or len(lurl) <= len("https://"):
             return None, reasons + ["G7 license.url 必须是非空 https 链接（%r）" % (lurl,)]
         lic_out = {"id": lid.strip(), "url": lurl}
+        # 内容判据（warning 级）：**不写进 catalogue** —— 协议规定 license 恰好
+        # {id, url} 两项，多一个字段就是自造。warning 打到 stderr 给维护者看。
+        if license_fetch is not None:
+            warn = _license_url_warning(lurl, license_fetch)
+            if warn:
+                print("  [warn] %s/%s: %s" % (repo, tag, warn), file=sys.stderr)
     else:
         lic_out = None                    # schema 2：合法无许可，如实记 null
 
@@ -285,7 +328,8 @@ def derive(sources, fetch_releases, fetch_bytes, check_runner, now, verbose=Fals
                     excluded.append({"repo": repo, "tag": tag,
                                      "reason": "manifest unreachable after 3 tries: %s" % e})
                     continue
-            entry, reasons = verify_entry(repo, rel, body, assets, check_runner)
+            entry, reasons = verify_entry(repo, rel, body, assets, check_runner,
+                                          license_fetch=fetch_bytes)
             if entry is None:
                 excluded.append({"repo": repo, "tag": tag, "reasons": reasons})
             else:

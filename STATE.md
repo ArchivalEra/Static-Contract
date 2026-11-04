@@ -108,6 +108,16 @@ Both are filled by `scripts/sync-catalogue.py` at derivation time. Live as of
 2026-11-04: mirrors verified byte-passing, 18/18 releases reachable on **both**
 roots (36/36 HEAD checks against `manifest.json`).
 
+## License URL content check (2026-11-04)
+
+`V11` checks only the shape of `license.url` (https, non-empty), so a page that
+answers `200` with no license text passes silently. The deriver now also fetches each
+`license.url` and emits a **warning** to stderr when the body is under `200` characters
+or contains no known license token. It never fails a release: splitting the license
+across file headers is a legitimate upstream layout, and failing would push producers
+to invent a URL. **It proves only that something is there, not that it is the right
+license.**
+
 ## Open
 
 - `questions/05` — zstd vs gzip on the real EdgeOne link (5 runs, median). Unresolved.

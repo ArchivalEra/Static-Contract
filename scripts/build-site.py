@@ -443,6 +443,12 @@ check bytes + sha256 &rarr; decode &rarr; concat &rarr; check entry.sha256</pre>
           This site is <a href="https://www.gnu.org/licenses/agpl-3.0.html">AGPL-3.0</a>
           &mdash; releases are not; each follows its publisher's terms
           (<a href="catalogue.json">catalogue.json</a>).<br />
+          <b>Design homage:</b> this page's layout and colour scheme
+          (<span class="mono">#000066</span> on white, the boxed caption headings,
+          the fine-ruled tables, the XHTML&nbsp;1.1 skeleton) are modelled on
+          <a href="https://he.net/">Hurricane Electric Internet Services</a>
+          &mdash; a deliberate tribute to a site that has kept the same plain,
+          legible shape for decades. All content here is ours; only the look is borrowed.<br />
           verified_at: <span class="mono">@@VERIFIED@@</span> &middot; @@FP@@
         </address>
       </div>

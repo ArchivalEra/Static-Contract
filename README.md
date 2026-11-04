@@ -113,6 +113,8 @@ rather than let a channel look available while it can never carry bytes. The Pag
 was **deleted**, not merely unlisted: a mirror that stops updating still answers `200` with a
 stale catalogue, which is worse than a `404`.
 
+**License URL content**: the deriver fetches each `license.url` and warns (stderr, never fatal) when the body is under 200 characters or names no known license. V11 checks shape only, so `200 but empty` would otherwise pass.
+
 **Online acceptance**: `scripts/verify-channels.py` checks, after deployment, each channel against
 **this build's artifact fingerprint** (`STATIC-CONTRACT-BUILD <hash>` written into `index.html`) and
 `catalogue.verified_at`. The criterion anchors to the artifact itself, **not to whether the channels
