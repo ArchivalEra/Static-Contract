@@ -193,6 +193,19 @@ export function useDecoder(codec: string, decode: Decoder): void {
   extraDecoders.set(codec, decode);
 }
 
+/**
+ * Forget a registered decoder, restoring whatever the platform provides.
+ *
+ * Exists so tests can isolate: without it, a test that registers a fake zstd
+ * leaves the process unable to observe "no zstd decoder", and the next test in
+ * the same module instance cannot assert the fallback path. Also the escape
+ * hatch for a long-lived server process serving tenants that must not share
+ * decoder implementations.
+ */
+export function forgetDecoder(codec: string): boolean {
+  return extraDecoders.delete(codec);
+}
+
 /** Whether this runtime can decode `codec`, asked at open time. */
 function canDecode(codec: string): boolean {
   if (codec === "identity") return true;
@@ -382,6 +395,10 @@ function validate(m: RawManifest, id: string): Map<string, Planned> {
   }
   const declared = Array.isArray(m.codecs) ? m.codecs : [];
 
+  // V11 applies only to schema 3; schema 2 predates the license field, so a
+  // release without one there is legitimate rather than malformed.
+  const releaseLicense = m.schema === 3 ? checkLicense(m.license, `${id} (release)`) : null;
+
   const plan = new Map<string, Planned>();
   for (const e of m.entries) {
     const key = `${e.product}/${e.name}`;
@@ -389,6 +406,7 @@ function validate(m: RawManifest, id: string): Map<string, Planned> {
       throw new ContractError("manifest-invalid", `release ${id}: duplicate entry ${key}`);
     }
     const variant = pickVariant(e, declared, id);
+    const own = e.license === undefined ? undefined : checkLicense(e.license, `${id} ${key}`);
     plan.set(key, {
       variant,
       info: {
@@ -399,11 +417,40 @@ function validate(m: RawManifest, id: string): Map<string, Planned> {
         sha256: e.sha256,
         role: e.role ?? "payload",
         codec: variant.codec,
-        license: e.license ?? m.license ?? null,
+        license: own ?? releaseLicense,
       },
     });
   }
   return plan;
+}
+
+/**
+ * V11: `license` is `{id, url}`, `id` non-empty, `url` starting with `https://`.
+ *
+ * The `https://` requirement is a safety property, not pedantry: this value is
+ * rendered by a UI as `href`, so a manifest that said `javascript:...` would be
+ * injecting script into every consumer that trusted it. The check runs here, at
+ * the only place a manifest enters the process.
+ */
+function checkLicense(value: unknown, where: string): LicenseRef | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "object") {
+    throw new ContractError(
+      "manifest-invalid",
+      `${where}: license must be an object {id, url}, got ${typeof value} (canon V11)`,
+    );
+  }
+  const { id, url } = value as { id?: unknown; url?: unknown };
+  if (typeof id !== "string" || id === "") {
+    throw new ContractError("manifest-invalid", `${where}: license.id must be a non-empty string (canon V11)`);
+  }
+  if (typeof url !== "string" || !url.startsWith("https://")) {
+    throw new ContractError(
+      "manifest-invalid",
+      `${where}: license.url must start with https:// (canon V11) — got ${JSON.stringify(url)}`,
+    );
+  }
+  return { id, url };
 }
 
 /**
@@ -415,6 +462,22 @@ function validate(m: RawManifest, id: string): Map<string, Planned> {
  */
 function pickVariant(e: RawEntry, declared: string[], id: string): RawVariant {
   const available = Array.isArray(e.variants) ? e.variants : [];
+
+  // V5, second half: "all codecs of one entry must have the same chunk count
+  // (they slice the same original bytes)". Checked for every variant, not just
+  // the one this runtime picks — otherwise the same manifest would be valid for
+  // a zstd client and invalid for a gzip client, and a client that cannot decode
+  // zstd would never learn the manifest was broken.
+  const counts = new Set(available.map((v) => (Array.isArray(v.chunks) ? v.chunks.length : -1)));
+  if (counts.size > 1) {
+    const detail = available.map((v) => `${v.codec}=${Array.isArray(v.chunks) ? v.chunks.length : "?"}`).join(", ");
+    throw new ContractError(
+      "manifest-invalid",
+      `release ${id} entry ${e.product}/${e.name}: codecs disagree on chunk count (${detail}); ` +
+        `canon V5 requires them to slice the same bytes the same way`,
+      { entry: `${e.product}/${e.name}` },
+    );
+  }
 
   for (const codec of declared) {
     if (!canDecode(codec)) continue;
@@ -583,6 +646,17 @@ const EMPTY: Bytes = new Uint8Array(0);
  * The ledger lives on the handle, not on each entry: with a per-entry ledger a
  * dead mirror is retried once per entry (14 entries ⇒ 14 wasted round trips
  * before every chunk goes to the fallback).
+ *
+ * One pass over the roots, not several. A retry loop here would mask a mirror
+ * defect rather than fix it: measured 2026-11-04, the EdgeOne mirror returned
+ * `200, 200, 404, 200, 404, 404 …` for one existing chunk while GitHub answered
+ * `200` ten times out of ten, with the 404s carrying `eo-cache-status: HIT` —
+ * the mirror had cached a 404. Retrying would hide that from every operator
+ * while multiplying requests on a 35-chunk, 122 MB release. The correct fix is
+ * on the mirror; see mail/040.
+ *
+ * A root that fails stays demoted: penalties decay only when the root itself
+ * succeeds again, never because some *other* root succeeded.
  */
 class RootHealth {
   private readonly roots: string[];
@@ -600,50 +674,108 @@ class RootHealth {
       .sort((a, b) => this.failures[a.i] - this.failures[b.i]);
 
     let last: unknown;
+    let lastRoot = "";
     for (const { root, i } of order) {
       try {
-        return await attempt(root);
+        const bytes = await attempt(root);
+        // Only this root's own success pays down its debt.
+        this.failures[i] = Math.max(0, this.failures[i] - 1);
+        return bytes;
       } catch (e) {
         // A caller-driven abort is not this root's fault: rethrow instead of
         // burning the ledger and trying the next root, which would keep fetching
         // after the consumer asked to stop.
         if (isAbort(e)) throw e;
-        // Network failure and wrong bytes are both "this root did not deliver".
-        // Counting them the same keeps a mirror that serves corrupt data from
-        // being preferred over one that merely timed out.
+        // Any delivery failure counts: a refused connection, a 404 for one file,
+        // a body that never finished. All mean "this root did not deliver this
+        // file", which is the only question the ledger is answering.
         this.failures[i] += 1;
         last = e;
+        lastRoot = root;
       }
     }
-    throw last instanceof Error ? last : new ContractError("chunk-unavailable", "no root answered");
+    // Naming the root matters: "fetch failed" alone gives the caller no way to
+    // tell a dead mirror from a dead network from a bad path.
+    const reason = last instanceof Error ? `${last.name}: ${last.message}` : String(last);
+    throw new ContractError(
+      "chunk-unavailable",
+      `every root failed (last: ${lastRoot || "none"} — ${reason})`,
+      { cause: last },
+    );
   }
 }
 
 /**
- * The only place bytes enter the client. A deadline is composed in
- * unconditionally — `fetch` has no default timeout.
+ * The only place bytes enter the client.
  *
- * The deadline is disposed as soon as the body is read, not left to fire later:
- * `AbortSignal.timeout` keeps a timer alive for its full duration, and with a
- * 120 s deadline across many sequential chunks those timers outlive the work they
- * guard. Once a request is done its deadline has no meaning.
+ * Two concerns live here and nowhere else:
+ *
+ *  - **Deadline.** `fetch` has no default timeout, so one is composed in
+ *    unconditionally. It is disposed as soon as the body is read rather than
+ *    left to fire later: `AbortSignal.timeout` keeps a timer alive for its full
+ *    duration, and with a 120 s deadline across many sequential chunks those
+ *    timers would outlive the work they guard.
+ *
+ *  - **Transient retry.** A dropped connection to one host is not the same
+ *    failure as "this mirror does not have the file", but from `fetch`'s return
+ *    value they are indistinguishable. One immediate retry absorbs the former
+ *    without masking the latter: a genuine 404 or a genuine absence costs one
+ *    extra request and still fails. Retries do *not* happen across roots — that
+ *    is `RootHealth`'s job, one level up.
  */
 async function httpGet(url: string, session: AbortSignal): Promise<Bytes> {
   const doFetch = globalThis.fetch;
   if (!doFetch) {
     throw new ContractError("unsupported-environment", "no fetch implementation available");
   }
-  const deadline = new AbortController();
-  const timer = setTimeout(() => deadline.abort(), TIMEOUT_MS);
-  try {
-    const signal = AbortSignal.any([session, deadline.signal]);
-    const res = await doFetch(url, { method: "GET", signal });
-    if (!res.ok) {
-      throw new ContractError("chunk-unavailable", `GET ${url} -> ${res.status}`, { file: url });
+  if (typeof AbortSignal.any !== "function") {
+    // Safari < 17.4. Reported here rather than as "every mirror is down", which
+    // is what a TypeError thrown per root would look like.
+    throw new ContractError(
+      "unsupported-environment",
+      "AbortSignal.any is unavailable — this client needs a browser from 2024 or later",
+    );
+  }
+
+  let attempt = 0;
+  for (;;) {
+    attempt++;
+    const deadline = new AbortController();
+    const timer = setTimeout(() => deadline.abort(), TIMEOUT_MS);
+    let timedOut = false;
+    const onTimeout = () => {
+      timedOut = true;
+    };
+    deadline.signal.addEventListener("abort", onTimeout, { once: true });
+
+    try {
+      const signal = AbortSignal.any([session, deadline.signal]);
+      const res = await doFetch(url, { method: "GET", signal });
+      if (!res.ok) {
+        // A status is an answer, not a transport failure: never retried.
+        throw new ContractError("chunk-unavailable", `GET ${url} -> ${res.status}`, { file: url });
+      }
+      return new Uint8Array(await res.arrayBuffer());
+    } catch (e) {
+      // A deadline is a property of this request, not a caller cancellation, and
+      // must NOT be classified as one: `fetchAcrossRoots` rethrows cancellations
+      // without trying the next root, which would make the timeout the one
+      // failure that never falls back — precisely backwards.
+      if (timedOut && isAbort(e)) {
+        throw new ContractError(
+          "chunk-unavailable",
+          `GET ${url} -> timed out after ${TIMEOUT_MS}ms`,
+          { file: url, cause: e },
+        );
+      }
+      if (e instanceof ContractError) throw e; // a status; already final
+      if (isAbort(e)) throw e; // the caller cancelled; not ours to retry
+      if (attempt >= 2) throw e; // one retry only
+      // else: transient transport failure — try once more.
+    } finally {
+      deadline.signal.removeEventListener("abort", onTimeout);
+      clearTimeout(timer);
     }
-    return new Uint8Array(await res.arrayBuffer());
-  } finally {
-    clearTimeout(timer);
   }
 }
 
@@ -704,17 +836,37 @@ function adopt(bytes: Uint8Array): Bytes {
 /**
  * Fetch roots for a catalogue entry, normalised to end in `/`.
  *
- * Built from the parsed `URL`, never by slicing the input: the previous version
+ * Built from the parsed `URL`, never by slicing the input: an earlier version
  * checked `pathname.endsWith("/manifest.json")` but then sliced 13 characters off
  * the *original string*, so `.../manifest.json?v=3` became `.../mani`.
+ *
+ * A catalogue `base` is a **directory** (canon §5.3: "`<host>/<owner>/<repo>/
+ * releases/download/<tag>/`, trailing slash included"). Passing a manifest URL
+ * here is a caller mistake and is rejected rather than silently reinterpreted as
+ * a directory — appending `/` to `.../manifest.json` would yield
+ * `.../manifest.json/manifest.json`, and every chunk would 404 with a message
+ * that pointed at the mirror instead of at the caller.
  */
 function rootsOf(ref: ReleaseRef): string[] {
   const out: string[] = [];
   for (const raw of [ref.base, ref.base_proxy]) {
     if (typeof raw !== "string" || !raw) continue;
-    const url = new URL(raw);
+
+    let url: URL;
+    try {
+      url = new URL(raw);
+    } catch (e) {
+      throw new ContractError("manifest-invalid", `fetch root is not a URL: ${raw}`, { cause: e });
+    }
     if (url.protocol !== "https:") {
       throw new ContractError("manifest-invalid", `fetch root must be https: ${raw}`);
+    }
+    if (url.pathname.endsWith("/manifest.json")) {
+      throw new ContractError(
+        "manifest-invalid",
+        `fetch root must be a directory, not a manifest URL: ${raw} ` +
+          `(drop the trailing "manifest.json")`,
+      );
     }
     url.search = "";
     url.hash = "";
