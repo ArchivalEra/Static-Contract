@@ -136,10 +136,17 @@ so far, each measured on the same existing asset with plain GET and no query str
   that failure mode dropped to 0/20 here.
 - *Round 2* — 30 GETs still produced 17 failures, now with `server: github.com` and body
   `Not Found` (9 B), `eo-cache-status: MISS`. The release rule is now selected, but its origin
-  request returns github.com's own 404 instead of the 302 to the asset host. All 13 successes
-  carried `x-served-by: cache-iad-kcgs7200136-IAD`; none of the 17 failures carried
-  `x-served-by` at all, which points at edge nodes still running a mid-edit version of the rule
-  set rather than at the rule's intent. Open with the provider.
+  request returns github.com's own 404 instead of the 302 to the asset host. **An earlier
+  reading of this — "other edge nodes are on a mid-edit rule version" — was wrong and is
+  corrected here**: every success *and* every failure came from the same PoP
+  (`cache-iad-kcgs7200136-IAD`); `x-served-by` is simply absent when the request never reaches
+  the blob layer, which is not evidence of a different node.
+- *Round 3 (current best discriminator)* — `eo-cache-status` separates the cases perfectly:
+  `HIT` ⇒ 200 (gzip, 8/8, `age` 5.5 h), `MISS` ⇒ 404 (zstd, 8/8, no `age`, no `x-cache`).
+  So requests that skip the origin succeed and requests that hit the origin fail: the origin
+  fetch itself is intermittent, on one node. A rarely-requested asset confirmed it — 404 (MISS),
+  then 200 (HIT, the one origin fetch that worked, which populated the cache), then 404 (MISS).
+  Open with the provider; hypothesis C in `mail/read/043` / outgoing `mail/009`.
 
 Judge by the `server` header, never the status code: `Windows-Azure-Blob` is correct,
 `TencentEdgeOne` was the site rule, `github.com` is the release rule failing upstream.
