@@ -125,15 +125,27 @@ rather than let a channel look available while it can never carry bytes. The Pag
 was **deleted**, not merely unlisted: a mirror that stops updating still answers `200` with a
 stale catalogue, which is worse than a `404`.
 
-**Known defect on the EdgeOne line (reported 2026-11-04, open).** For one existing asset, 20
-consecutive plain GETs of the same URL produced 8 wrong responses: `server: TencentEdgeOne`
-with `via: 1.1 varnish` and a 14-byte `404: Not Found`, i.e. the request fell through to the
-site rule (origin `raw.githubusercontent.com`) instead of the release-byte rule. A correct
-response carries `server: Windows-Azure-Blob` and no `via`. No query string is involved, so
-this is not the query-sensitivity the provider also reported. Judge by the `server` header,
-not the status code. Consumers are not blocked: when `base` fails the client falls back to
-`base_proxy` (GitHub), which served the same URL 10/10. Letters `mail/read/041` and the
-outgoing reply (provider `mail/007`) carry the measurements.
+**Known defect on the EdgeOne line (reported 2026-11-04, partly fixed, still open).** Two rounds
+so far, each measured on the same existing asset with plain GET and no query string:
+
+- *Round 1* — 20 GETs produced 8 failures whose headers were `server: TencentEdgeOne`,
+  `via: 1.1 varnish`, body `404: Not Found` (14 B). Cause, found by the provider: the site rule
+  (`site-from-deploy-eo`, condition `host /*`, matching every path) was ordered *before* the
+  release-byte rule, so fetch requests were captured by the site rule and sent to
+  `raw.githubusercontent.com`. Fixed by moving the release-byte rule to priority 1;
+  that failure mode dropped to 0/20 here.
+- *Round 2* — 30 GETs still produced 17 failures, now with `server: github.com` and body
+  `Not Found` (9 B), `eo-cache-status: MISS`. The release rule is now selected, but its origin
+  request returns github.com's own 404 instead of the 302 to the asset host. All 13 successes
+  carried `x-served-by: cache-iad-kcgs7200136-IAD`; none of the 17 failures carried
+  `x-served-by` at all, which points at edge nodes still running a mid-edit version of the rule
+  set rather than at the rule's intent. Open with the provider.
+
+Judge by the `server` header, never the status code: `Windows-Azure-Blob` is correct,
+`TencentEdgeOne` was the site rule, `github.com` is the release rule failing upstream.
+Consumers are not blocked — when `base` fails the client falls back to `base_proxy` (GitHub),
+which served the same URL 10/10. Letters `mail/read/041`, `mail/read/042`, and the outgoing
+replies (provider `mail/007`, `mail/008`) carry the measurements.
 **`catalogue.json` still lists `static.isui.ren` as `base`**, because it is the designed primary
 and the fallback is exercised automatically; what is recorded here is that its reliability is
 under repair, not that the field is wrong.
