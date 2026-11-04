@@ -778,3 +778,80 @@ A pipeline exists so that the artifact is never edited by hand. The moment a
 measurement requires writing to the artifact, the measurement has become the
 edit. Measure by pushing to `main` and letting the pipeline run — slower, but it
 cannot destroy the thing it is measuring.
+## 2026-11-04 — EdgeOne fetch returned 404 for existing assets: rule merging, not rule order
+
+**What happened**
+
+While verifying the three independent fetch roots, one existing asset on the EdgeOne
+mirror (`static.isui.ren`) failed intermittently on a plain GET with no query string.
+It took three rounds to characterise, and two of my own conclusions were wrong before the
+third was right. The record is kept for the diagnosis discipline, not for the fault.
+
+- **Round 1.** 20 GETs, 8 failures. Headers: `server: TencentEdgeOne`, `via: 1.1 varnish`,
+  body `404: Not Found` (14 B). The site rule `site-from-deploy-eo` has condition `host /*`
+  — it matches every path — and sat *before* the release-byte rule, so fetch requests were
+  captured by it and sent to `raw.githubusercontent.com`.
+- **Round 2.** The provider moved the release rule to priority 1. That failure mode fell to
+  0/20, but 17/30 still failed, now `server: github.com` with a 9-byte `Not Found`.
+  **My reading here was wrong**: I saw "successes carry `x-served-by`, failures do not" and
+  concluded different edge nodes were running a mid-edit rule version. In fact every success
+  *and* every failure came from the same PoP. `x-served-by` is simply absent when a request
+  never reaches the blob layer, so its absence says nothing about which node answered.
+- **Round 3.** Switching the discriminator to `eo-cache-status` separated the cases perfectly:
+  `HIT` ⇒ 200, `MISS` ⇒ 404. That pointed at the origin fetch itself, which led the provider
+  to the real cause: **EdgeOne merges matching rules rather than selecting one.** A
+  lower-priority rule's action keeps applying unless a higher-priority rule declares that same
+  action. `site-from-deploy-eo` declares `UpstreamURLRewrite` to
+  `/ArchivalEra/Static-Contract/deploy-eo/$1`; the release rule declared
+  `ModifyOrigin`/`HostHeader`/`UpstreamFollowRedirect` but **not** `UpstreamURLRewrite`, so the
+  release request was rewritten onto the deploy-branch path and github.com answered with its
+  own 404. The 9-byte body was github.com's page, not the release's — that difference from the
+  14-byte raw body in round 1 was the thread that unravelled it.
+
+**Root cause**
+
+Rule merging. Priority decides *which rule's action wins when both declare it*, not *which
+rule applies*: every matching rule contributes any action the winner leaves unclaimed. The
+fetch path matched both the site rule and the release rule; the site rule's rewrite survived
+because the release rule never claimed that action.
+
+**Fix (provider side)**
+
+Declare an explicit identity rewrite in the release rule — `^/(.*)$` → `/$1` — which changes
+nothing by itself and exists only to occupy the claim. Verified by A/B: remove it and fetch
+404s; restore it and fetch 200s.
+
+**Verified after the fix (this repository's own measurements)**
+
+Each root fetches the whole LLVM-wasm v0.1.6 release on its own, with `base_proxy` set to
+`null` so no fallback can hide a failure:
+
+```
+EO  (static.isui.ren)            14/14 entries, 122,967,501 B, every entry sha verified,  97.8 s
+CF  (static.mango-mesa.ccwu.cc)  14/14 entries, 122,967,501 B, every entry sha verified,  63.1 s
+base_proxy (github.com)          14/14 entries, 122,967,501 B, every entry sha verified
+```
+
+Three-line edge acceptance 3/3 PASS. Residual probe failures were `curl` exit 28 (connect
+timeout, no response at all) — transport drops on this host's egress, categorically different
+from the 404s, which always arrived with a full header set.
+
+**Lesson**
+
+Judging a line by status code, or by one header in isolation, produced two wrong diagnoses.
+The discriminator that worked answered a narrower question: *did this request touch the
+origin at all?* `eo-cache-status` answers that; `server` names the layer. A header that is
+merely **absent** on failure is not evidence of a different server — it is evidence that the
+request stopped earlier. Reaching for that distinction before writing "different nodes" would
+have saved a round.
+
+**Reproduce**
+
+```bash
+U="https://static.isui.ren/ArchivalEra/LLVM-wasm/releases/download/v0.1.6/toolchain__clang.wasm.zstd.000"
+for i in $(seq 1 30); do
+  curl -sS -D /tmp/h -o /dev/null -w "%{http_code} " "$U"
+  grep -iE "^server|^eo-cache-status|^x-served-by" /tmp/h | tr -d '\r' | tr '\n' ' '
+  echo
+done
+```

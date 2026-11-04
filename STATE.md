@@ -151,12 +151,12 @@ license.**
 
 | 键 | 值 | 测于 | 复跑命令 |
 |---|---|---|---|
-| `catalogue_releases` | **0** | 2026-11-04T18:46:32+0800 | `python3 -c "import json;print(len(json.load(open('site/catalogue.json'))['releases']))"` |
-| `mail_unread` | **0** | 2026-11-04T18:46:32+0800 | `find mail -maxdepth 1 -name '[0-9]*.md' | wc -l` |
-| `site_build_selftest_pass` | **14** | 2026-11-04T18:46:32+0800 | `python3 scripts/build-site.py --selftest 2>/dev/null | grep -c '^PASS'` |
-| `specs_md` | **7** | 2026-11-04T18:46:30+0800 | `ls specs/*.md | wc -l` |
-| `tool_check_release_selftest_pass` | **37** | 2026-11-04T18:46:32+0800 | `python3 tools/check-release-v4.py --selftest 2>/dev/null | grep -c '^PASS'` |
-| `tool_manifest_selftest_pass` | **43** | 2026-11-04T18:46:32+0800 | `python3 tools/make-manifest-v4.py --selftest 2>/dev/null | grep -c '^PASS'` |
+| `catalogue_releases` | **0** | 2026-11-04T21:51:59+0800 | `python3 -c "import json;print(len(json.load(open('site/catalogue.json'))['releases']))"` |
+| `mail_unread` | **0** | 2026-11-04T21:51:59+0800 | `find mail -maxdepth 1 -name '[0-9]*.md' | wc -l` |
+| `site_build_selftest_pass` | **14** | 2026-11-04T21:51:59+0800 | `python3 scripts/build-site.py --selftest 2>/dev/null | grep -c '^PASS'` |
+| `specs_md` | **7** | 2026-11-04T21:51:58+0800 | `ls specs/*.md | wc -l` |
+| `tool_check_release_selftest_pass` | **37** | 2026-11-04T21:51:59+0800 | `python3 tools/check-release-v4.py --selftest 2>/dev/null | grep -c '^PASS'` |
+| `tool_manifest_selftest_pass` | **43** | 2026-11-04T21:51:59+0800 | `python3 tools/make-manifest-v4.py --selftest 2>/dev/null | grep -c '^PASS'` |
 
 6 条事实。
 <!-- /AUTO:FACTS -->

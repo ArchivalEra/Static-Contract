@@ -125,37 +125,44 @@ rather than let a channel look available while it can never carry bytes. The Pag
 was **deleted**, not merely unlisted: a mirror that stops updating still answers `200` with a
 stale catalogue, which is worse than a `404`.
 
-**Known defect on the EdgeOne line (reported 2026-11-04, partly fixed, still open).** Two rounds
-so far, each measured on the same existing asset with plain GET and no query string:
+**The EdgeOne fetch defect is closed (2026-11-04).** It took three rounds to characterise, and
+the record is kept because the *way* it was misdiagnosed twice is the reusable part. Same
+existing asset, plain GET, no query string, throughout.
 
-- *Round 1* — 20 GETs produced 8 failures whose headers were `server: TencentEdgeOne`,
-  `via: 1.1 varnish`, body `404: Not Found` (14 B). Cause, found by the provider: the site rule
-  (`site-from-deploy-eo`, condition `host /*`, matching every path) was ordered *before* the
-  release-byte rule, so fetch requests were captured by the site rule and sent to
-  `raw.githubusercontent.com`. Fixed by moving the release-byte rule to priority 1;
-  that failure mode dropped to 0/20 here.
-- *Round 2* — 30 GETs still produced 17 failures, now with `server: github.com` and body
-  `Not Found` (9 B), `eo-cache-status: MISS`. The release rule is now selected, but its origin
-  request returns github.com's own 404 instead of the 302 to the asset host. **An earlier
-  reading of this — "other edge nodes are on a mid-edit rule version" — was wrong and is
-  corrected here**: every success *and* every failure came from the same PoP
-  (`cache-iad-kcgs7200136-IAD`); `x-served-by` is simply absent when the request never reaches
-  the blob layer, which is not evidence of a different node.
-- *Round 3 (current best discriminator)* — `eo-cache-status` separates the cases perfectly:
-  `HIT` ⇒ 200 (gzip, 8/8, `age` 5.5 h), `MISS` ⇒ 404 (zstd, 8/8, no `age`, no `x-cache`).
-  So requests that skip the origin succeed and requests that hit the origin fail: the origin
-  fetch itself is intermittent, on one node. A rarely-requested asset confirmed it — 404 (MISS),
-  then 200 (HIT, the one origin fetch that worked, which populated the cache), then 404 (MISS).
-  Open with the provider; hypothesis C in `mail/read/043` / outgoing `mail/009`.
+- *Round 1* — 20 GETs produced 8 failures: `server: TencentEdgeOne`, `via: 1.1 varnish`, body
+  `404: Not Found` (14 B). The site rule `site-from-deploy-eo` (condition `host /*`, matching
+  every path) sat *before* the release-byte rule, so fetch requests were captured by the site
+  rule and sent to `raw.githubusercontent.com`.
+- *Round 2* — after the provider moved the release rule to priority 1, that mode dropped to
+  0/20 but 17/30 still failed, now `server: github.com` with a 9-byte `Not Found`. My reading at
+  this point — "other edge nodes are on a mid-edit rule version" — **was wrong**: every success
+  and every failure came from the same PoP, and `x-served-by` is merely absent when a request
+  never reaches the blob layer. Absence of that header is not evidence of a different node.
+- *Round 3* — `eo-cache-status` separated the cases perfectly: `HIT` ⇒ 200, `MISS` ⇒ 404. That
+  pointed at the origin fetch, and the real cause was **rule merging, not rule order**: EdgeOne
+  merges matching rules, and a lower-priority rule's action still applies unless a
+  higher-priority rule declares that same action. `site-from-deploy-eo` declares
+  `UpstreamURLRewrite` to `/ArchivalEra/Static-Contract/deploy-eo/$1`; the release rule did not
+  declare it, so release requests were rewritten onto the deploy branch path and github.com
+  answered 404. The fix is an explicit identity rewrite (`^/(.*)$` → `/$1`) in the release rule.
+  Confirmed by A/B: remove it and fetch 404s; restore it and fetch 200s.
 
-Judge by the `server` header, never the status code: `Windows-Azure-Blob` is correct,
-`TencentEdgeOne` was the site rule, `github.com` is the release rule failing upstream.
-Consumers are not blocked — when `base` fails the client falls back to `base_proxy` (GitHub),
-which served the same URL 10/10. Letters `mail/read/041`, `mail/read/042`, and the outgoing
-replies (provider `mail/007`, `mail/008`) carry the measurements.
-**`catalogue.json` still lists `static.isui.ren` as `base`**, because it is the designed primary
-and the fallback is exercised automatically; what is recorded here is that its reliability is
-under repair, not that the field is wrong.
+**Verified after the fix** — each root fetches the whole release on its own, with no fallback:
+
+```
+EO  (static.isui.ren)            14/14 entries, 122,967,501 B, every entry sha verified,  97.8 s
+CF  (static.mango-mesa.ccwu.cc)  14/14 entries, 122,967,501 B, every entry sha verified,  63.1 s
+base_proxy (github.com)          14/14 entries, 122,967,501 B, every entry sha verified
+```
+
+Three-line edge acceptance: 3/3 PASS (`cf-ray` / `eo-*` / Azure `x-ms-*`). The residual
+failures seen while probing are `curl` exit 28 (connect timeout) with no response at all — a
+transport drop on this host's egress, distinct from the 404s, which always carried headers.
+
+Judgement rule worth keeping: identify a line by its **`server` header plus cache state**, never
+by status code. `Windows-Azure-Blob` is the release rule working; `TencentEdgeOne` was the site
+rule; `github.com` was the release rule reaching the wrong upstream path. Letters
+`mail/read/041`–`044` and the outgoing replies (provider `mail/007`–`009`) carry the measurements.
 
 **License URL content**: the deriver fetches each `license.url` and warns (stderr, never fatal) when the body is under 200 characters or names no known license. V11 checks shape only, so `200 but empty` would otherwise pass.
 

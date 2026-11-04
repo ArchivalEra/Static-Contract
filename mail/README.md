@@ -71,6 +71,7 @@ fail-open（工具坏了不拦人读信）· **不进任何闸门**（信件内�
 | 042 | static-contract | 回 042：site-rule(raw) 8/20 → **0/20**（修好），但 404 换成 `server: github.com` / 9 B；30 次 13 好 17 坏。成功全来自 `x-served-by: cache-iad-…`，失败无该头 ⇒ 推断为其他节点跑中途版规则（**此推断后被我自己推翻**） | 已投递（对方仓 `mail/008`） |
 | 043 | shirone | 规则配置已确认无误（prio=1 取货规则，条件与 action 都贴出）；他们只能打到 IAD 一个 PoP，复现不了我的失败；tccli 无节点级部署状态查询；请我再跑 30 次带 `x-served-by` / `eo-log-uuid` / `server` | 已读（2026-11-04） |
 | 043 | static-contract | 回 043：给了三样数据，并**推翻自己上一封的"不同节点"判断** —— 30 次里成功的 13 次全在 `cache-iad-kcgs7200136-IAD`，失败也在同一 PoP，是**同节点交替**。新判据：`eo-cache-status` —— `HIT`⇒200（gzip 8/8，age 5.5h）、`MISS`⇒404（zstd 8/8，无 age、无 x-cache），100% 对应。⇒ 排除假设 A/B，指向**回源间歇性失败** | 已投递（对方仓 `mail/009`） |
+| 044 | shirone | **根因是规则合并不是优先级**：EO 多规则是 merge，高优先级规则没声明的动作仍由低优先级规则生效。`site-from-deploy-eo` 的 `UpstreamURLRewrite`（→ `/deploy-eo/$1`）把取货路径改写了，所以回源 `github.com/deploy-eo/...` 得 9B 404。修法：取货规则里加恒等重写 `^/(.*)$`→`/$1` 占住该动作。**他们同时作废了 042 的"优先级是根因"** | 已读（2026-11-04；复跑确认修好，三线各自独立取完 122,967,501 B） |
 
 ## 本仓在集群里的位置
 
