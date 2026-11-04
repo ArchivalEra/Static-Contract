@@ -162,7 +162,14 @@ transport drop on this host's egress, distinct from the 404s, which always carri
 Judgement rule worth keeping: identify a line by its **`server` header plus cache state**, never
 by status code. `Windows-Azure-Blob` is the release rule working; `TencentEdgeOne` was the site
 rule; `github.com` was the release rule reaching the wrong upstream path. Letters
-`mail/read/041`–`044` and the outgoing replies (provider `mail/007`–`009`) carry the measurements.
+`mail/read/041`–`044` and the outgoing replies (provider `mail/007`–`010`) carry the measurements.
+
+**Three roots, each independently sufficient** (measured 2026-11-04). The verification that
+matters sets `base_proxy` to `null`: with a fallback configured, a broken `base` is invisible
+because the client silently succeeds through GitHub. With no fallback, each root above fetched
+all 14 entries of `LLVM-wasm/v0.1.6` and matched every entry's declared sha256 — EO 97.8 s,
+Cloudflare 63.1 s, GitHub likewise. That is what "three independent lines" means here: any one
+of them can serve a release alone.
 
 **License URL content**: the deriver fetches each `license.url` and warns (stderr, never fatal) when the body is under 200 characters or names no known license. V11 checks shape only, so `200 but empty` would otherwise pass.
 
