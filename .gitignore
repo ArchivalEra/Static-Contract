@@ -38,6 +38,7 @@
 # 参考客户端（仓库内容，不进 dist —— H9 白名单仍恰好 7 个文件）
 !/examples/
 !/examples/*.py
+!/examples/*.ts
 !/examples/*.md
 
 # ===== 部署自动更新链（2026-11-01）=====

@@ -1,9 +1,44 @@
 # examples
 
-Reference clients for the distribution contract. Both are executable and were run
-against the live catalogue; neither is a sketch.
+Reference clients for the distribution contract. Both run against the live catalogue;
+neither is a sketch.
 
-## `fetch-concurrent.py` — concurrent chunk fetch with cross-source continuation
+**Both consumers of this contract are in the browser** (Octave-UI's package manager and
+in-site downloads), so **`fetch-concurrent.ts` is the reference implementation**.
+`fetch-concurrent.py` is kept as a line-by-line parallel for testing and for non-browser
+tooling — same algorithm, same checks, different runtime.
+
+## `fetch-concurrent.ts` — the browser client
+
+TypeScript, strict, no dependencies except `fzstd` (6.8 KB — canon §4 names it for the
+zstd branch). Uses only browser primitives: `fetch`, `crypto.subtle.digest`,
+`DecompressionStream("gzip")`, `AbortSignal`.
+
+```ts
+import { fetchRelease, rootsFor } from "./fetch-concurrent";
+
+const entry = catalogue.releases.find((r) => r.id === "LLVM-wasm/v0.1.6")!;
+const [mirror, origin] = rootsFor(entry);          // base, then base_proxy
+
+const files = await fetchRelease(mirror + "manifest.json", {
+  jobs: 8,
+  zstd: { decompress: (b) => fzstd.decompress(b) }, // omit if you only need gzip/identity
+  fallbackRoots: [origin],                          // cross-source continuation
+  onProgress: (done, total) => console.log(`${done}/${total}`),
+});
+// files: Map<"<product>/<name>", Uint8Array> — every hash already verified
+```
+
+Exported surface: `fetchRelease`, `fetchEntry`, `rootsFor`, `rootOf`, `sha256Hex`,
+`decodableWithoutZstd`, plus the `Manifest` / `Entry` / `Chunk` / `Catalogue` types.
+
+Verified: `tsc --strict --lib ES2022,DOM` clean; executed on Node 26 against the live
+catalogue over two roots with zstd decode — 14 files, 122,967,501 B, identical to the
+Python run.
+
+## `fetch-concurrent.py` — the same algorithm, non-browser
+
+Concurrent chunk fetch with cross-source continuation, for testing and CLI tooling.
 
 Implements canon v1.1 §3.3 and the two properties this repository depends on.
 
