@@ -125,6 +125,19 @@ rather than let a channel look available while it can never carry bytes. The Pag
 was **deleted**, not merely unlisted: a mirror that stops updating still answers `200` with a
 stale catalogue, which is worse than a `404`.
 
+**Known defect on the EdgeOne line (reported 2026-11-04, open).** For one existing asset, 20
+consecutive plain GETs of the same URL produced 8 wrong responses: `server: TencentEdgeOne`
+with `via: 1.1 varnish` and a 14-byte `404: Not Found`, i.e. the request fell through to the
+site rule (origin `raw.githubusercontent.com`) instead of the release-byte rule. A correct
+response carries `server: Windows-Azure-Blob` and no `via`. No query string is involved, so
+this is not the query-sensitivity the provider also reported. Judge by the `server` header,
+not the status code. Consumers are not blocked: when `base` fails the client falls back to
+`base_proxy` (GitHub), which served the same URL 10/10. Letters `mail/read/041` and the
+outgoing reply (provider `mail/007`) carry the measurements.
+**`catalogue.json` still lists `static.isui.ren` as `base`**, because it is the designed primary
+and the fallback is exercised automatically; what is recorded here is that its reliability is
+under repair, not that the field is wrong.
+
 **License URL content**: the deriver fetches each `license.url` and warns (stderr, never fatal) when the body is under 200 characters or names no known license. V11 checks shape only, so `200 but empty` would otherwise pass.
 
 **Online acceptance**: `scripts/verify-channels.py` checks, after deployment, each channel against
