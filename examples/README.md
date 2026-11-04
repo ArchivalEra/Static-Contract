@@ -1,89 +1,126 @@
 # examples
 
-Reference clients for the distribution contract. Both run against the live catalogue;
-neither is a sketch.
+Two files, both run against the live catalogue; neither is a sketch.
 
-**Both consumers of this contract are in the browser** (Octave-UI's package manager and
-in-site downloads), so **`fetch-concurrent.ts` is the reference implementation**.
-`fetch-concurrent.py` is kept as a line-by-line parallel for testing and for non-browser
-tooling — same algorithm, same checks, different runtime.
+- **`fetch-concurrent.ts`** — the reference client. Both consumers of this contract
+  (Octave-UI's package manager and in-site downloads) run in a browser, so the
+  reference implementation is TypeScript.
+- **`verify-three-lines.py`** — acceptance for a different question: not "does it
+  fetch" but "whose edge did the bytes cross".
 
 ## `fetch-concurrent.ts` — the browser client
 
-TypeScript, strict, no dependencies except `fzstd` (6.8 KB — canon §4 names it for the
-zstd branch). fzstd is MIT-licensed, by Arjun Barrett. See `NOTICE` in the repository
-root for the full attribution and license text. Uses only browser primitives: `fetch`,
-`crypto.subtle.digest`, `DecompressionStream("gzip")`, `AbortSignal`.
+TypeScript, strict, no runtime dependencies. Uses only browser primitives:
+`fetch`, `crypto.subtle.digest`, `DecompressionStream`, `AbortSignal`.
+
+The interface is one function and one handle:
 
 ```ts
-import { fetchRelease, rootsFor } from "./fetch-concurrent";
+import { openRelease } from "./fetch-concurrent";
 
-const entry = catalogue.releases.find((r) => r.id === "LLVM-wasm/v0.1.6")!;
-const [mirror, origin] = rootsFor(entry);          // base, then base_proxy
-
-const files = await fetchRelease(mirror + "manifest.json", {
-  jobs: 8,
-  zstd: { decompress: (b) => fzstd.decompress(b) }, // omit if you only need gzip/identity
-  fallbackRoots: [origin],                          // cross-source continuation
-  onProgress: (done, total) => console.log(`${done}/${total}`),
-});
-// files: Map<"<product>/<name>", Uint8Array> — every hash already verified
+const rel = await openRelease(catalogue.releases.find((r) => r.id === "LLVM-wasm/v0.1.6")!);
+const entry = rel.entries.find((e) => e.key === "toolchain/clang.wasm")!;
+const bytes = await rel.read(entry);        // verified: length + sha256
 ```
 
-Exported surface: `fetchRelease`, `fetchEntry`, `rootsFor`, `rootOf`, `sha256Hex`,
-`decodableWithoutZstd`, plus the `Manifest` / `Entry` / `Chunk` / `Catalogue` types.
+Roots, manifests, chunks, codecs, retries, timeouts, concurrency and per-chunk
+hashes stay behind that line. A caller never sees a chunk, so it cannot assemble a
+name, decode a concatenation, or skip a hash.
 
-Verified: `tsc --strict --lib ES2022,DOM` clean; executed on Node 26 against the live
-catalogue over two roots with zstd decode — 14 files, 122,967,501 B, identical to the
-Python run.
+For a whole release, `readAll()` yields entries one at a time in manifest order, so
+peak memory is the largest single entry rather than the whole release:
 
-## `fetch-concurrent.py` — the same algorithm, non-browser
+```ts
+for await (const { info, bytes } of rel.readAll()) {
+  await writeToDisk(info.key, bytes);        // previous bytes are collectable here
+}
+```
 
-Concurrent chunk fetch with cross-source continuation, for testing and CLI tooling.
+### Codecs are an open vocabulary
 
-Implements canon v1.1 §3.3 and the two properties this repository depends on.
+Canon V9 makes `codecs[]` "an open vocabulary (not an enum)" — adding `br` or `xz`
+must not require a schema change or a client change. So decodability is
+**discovered, never configured per call**:
+
+- `identity` always works (a no-op).
+- Anything the platform's `DecompressionStream` accepts works — `gzip`, `deflate`,
+  and on newer engines `zstd` and `br`. `new DecompressionStream(name)` throws
+  exactly when the platform lacks the codec, so the constructor is the probe.
+- Anything else is registered once for the process:
+
+```ts
+import { useDecoder } from "./fetch-concurrent";
+import * as fzstd from "fzstd";              // MIT, Arjun Barrett — see NOTICE
+
+useDecoder("zstd", (b) => fzstd.decompress(b));
+```
+
+Registration is process-wide because codec capability is: a runtime either can
+decompress zstd or it cannot, and that does not vary per release or per call. An
+option on `openRelease` would put the same argument on every call site to express
+a property none of them control.
+
+A manifest declaring a codec this runtime cannot decode is **not** an error: the
+client falls through to the next declared codec, per canon §3.3 ("in codecs order
+pick the first decodable branch"). Only an entry with no decodable variant at all
+fails, and the message names what was offered and what is missing.
+
+### What it demonstrates
 
 **Concurrency.** Chunks are independent by construction (V5 requires every chunk to
-decode on its own), so they are fetched in parallel and reordered by `part`, never by
-arrival time.
+decode on its own), so they are fetched in parallel and reordered by `part`.
 
 **Cross-source continuation.** Every chunk may come from any root serving the same
-manifest: `base` (cluster mirror), `base_proxy` (GitHub), or a second mirror. The
-chunk `sha256` is verified before the chunk is accepted, so a truncated or wrong
-response from one root cannot corrupt the result — it just demotes that root and the
-chunk is retried elsewhere. Roots are tried least-failed-first so a dead mirror is not
-hammered once per chunk.
+manifest: `base` (cluster mirror) or `base_proxy` (GitHub). The chunk `sha256` is
+verified before acceptance, so a truncated or wrong response from one root cannot
+corrupt the result — it demotes that root and the chunk is retried elsewhere. The
+failure ledger is shared across all entries of a release, so a dead mirror is not
+retried once per entry.
 
-**Why mixing is safe.** Both roots must serve a byte-identical `manifest.json`; the
-client compares them and refuses to mix otherwise. Because chunk names, sizes and
-hashes then agree, a payload started on one root and finished on another reassembles
-correctly.
+**Why mixing is safe.** Both roots must serve a byte-identical `manifest.json`;
+chunk names, sizes and hashes then agree, so a payload started on one root and
+finished on another reassembles correctly.
 
-**The trap this example exists to document.** Decode each chunk **separately**, then
-concatenate. Decoding the joined buffer in one pass silently truncates a multi-chunk
-payload to its first frame: measured on `octave.data`, a 9,712,192 B payload
-decompressed to 2,541,663 B with every chunk hash still green and the per-chunk
-checks all reporting PASS. Only the final entry hash caught it.
+### The trap this example exists to document
 
-```bash
-# single root
-python3 fetch-concurrent.py \
-  https://static.isui.ren/<owner>/<repo>/releases/download/<tag>/manifest.json out/
+Decode each chunk **separately**, then concatenate. Decoding the joined buffer in
+one pass silently truncates a multi-chunk payload to its first frame: measured on
+`octave.data`, a 9,712,192 B payload decompressed to 2,541,663 B with every chunk
+hash still green and the per-chunk checks all reporting PASS. Only the final entry
+hash caught it. This is canon §4.3.
 
-# two roots, cross-source continuation
-python3 fetch-concurrent.py \
-  https://static.isui.ren/<owner>/<repo>/releases/download/<tag>/manifest.json out/ \
-  --fallback https://github.com/<owner>/<repo>/releases/download/<tag>/manifest.json \
-  --jobs 8
+Because of that, `read()` returns bytes only **after** the entry hash matches. A
+streaming interface would hand bytes out before that gate closes, letting a consumer
+persist a corrupt payload and only then learn about it.
+
+### Verified
+
+`tsc --strict` clean (no unused locals or parameters). Executed on Node 26 against
+the live catalogue:
+
+```
+opening LLVM-wasm/v0.1.6 -> 14 entries
+reading toolchain/clang.wasm (48,069,274 B, codec=zstd) -> length + sha verified
+readAll() -> 14 entries, 122,967,501 B, every entry sha verified
 ```
 
-Options: `--jobs N` (default 8), `--codec zstd|gzip|identity` (default: manifest order),
-`--proxy http://host:port`.
+Edge cases exercised against the live service:
+
+| Case | Result |
+|---|---|
+| no zstd decoder registered | falls through to gzip; 48 MB entry still verifies |
+| dead `base_proxy` | primary still serves; no error |
+| both roots dead | `manifest-unreachable` in 39 ms, no hang |
+| abort mid-flight | `aborted`, not a bare `DOMException` |
+| foreign `EntryInfo` | `manifest-invalid` |
+| bad catalogue pin | `manifest-pin-mismatch` |
+| arbitrary codec name | accepted by `useDecoder` (open vocabulary) |
+| `useDecoder("identity", …)` | refused |
 
 ## `verify-three-lines.py` — whose edge did the bytes cross?
 
-Answers a different question from "does it fetch". All three roots fetch fine; the
-question is whether the bytes actually transited the platform each URL claims to use.
+All three roots fetch fine; the question is whether the bytes actually transited the
+platform each URL claims to use.
 
 The criterion is platform fingerprints in the response headers:
 
@@ -93,8 +130,8 @@ The criterion is platform fingerprints in the response headers:
 | EdgeOne | `eo-log-uuid`, `eo-cache-status`, `report-to: nel.teo-rum.com` |
 | GitHub | `server: github.com`, or the Azure Blob `x-ms-*` headers |
 
-A false negative worth remembering: EdgeOne **passes upstream headers through**, so a
-response served by EdgeOne can still say `server: Windows-Azure-Blob` and carry
+A false negative worth remembering: EdgeOne **passes upstream headers through**, so
+a response served by EdgeOne can still say `server: Windows-Azure-Blob` and carry
 `x-served-by: cache-iad-…`. Judging by `server` alone reports "not EdgeOne" when it
 plainly is. The `eo-*` headers are what prove it.
 
@@ -109,7 +146,7 @@ Exit code is non-zero if any line does not show its own edge.
 
 ```
 # three-line edge acceptance
-PASS cf          server=cloudflare, cf-ray=a55111fb1af77a17
+PASS cf          server=cloudflare, cf-ray=a551e87a9826ec6d
 PASS eo          eo-cache-status, eo-log-uuid, report-to→teo-rum.com
 PASS base_proxy  server=Windows-Azure-Blob/1.0, x-ms-* (Azure Blob direct)
 
@@ -118,7 +155,7 @@ cf  entries=14 chunks=35 total=122967501B digest=9fe229759cc01fcb
 eo  entries=14 chunks=35 total=122967501B digest=9fe229759cc01fcb
 gh  entries=14 chunks=35 total=122967501B digest=9fe229759cc01fcb
 
-# codec independence: gzip and zstd decode to byte-identical trees
-# failover: dead primary root, 10 chunks of clang.wasm all served by the fallback,
-#           primary demoted after a single failure, entry sha verified
+# catalogue reachability, both roots
+18/18 releases: 200 on base and base_proxy, byte-identical manifest,
+                sha256 matches the catalogue's manifest_sha256
 ```
