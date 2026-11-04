@@ -63,17 +63,22 @@ copy it rather than maintaining their own list.
 
 One artifact, three channels:
 
-| Channel | URL | Owned |
-|---|---|---|
-| GitHub Pages | `https://archivalera.github.io/Static-Contract/` | yes |
-| Cloudflare | `https://static.mango-mesa.ccwu.cc/` | no |
-| EdgeOne | `https://isui.ren/static/` | no |
+| Channel | URL | Owned | Role |
+|---|---|---|---|
+| deploy branch | `https://raw.githubusercontent.com/ArchivalEra/Static-Contract/deploy/` | **yes** | artifact of record; both mirrors read from it |
+| Cloudflare | `https://static.mango-mesa.ccwu.cc/` | no | site mirror + release byte proxy |
+| EdgeOne | `https://isui.ren/static/` | no | site mirror (release bytes at `static.isui.ren`) |
+
+GitHub Pages was removed on 2026-11-04: a Pages site is inert static hosting and can
+never proxy or redirect release bytes, so as a fetch channel it was pure false signal.
+The site itself is deleted rather than left serving a stale artifact.
 
 `site/channels.json` carries `owned`. **Only a failure on an owned channel blocks a
-release.** External channels report a warning and never silently disappear.
+release.** External channels report a warning and never silently disappear. A channel
+list with no `owned` entry is a fatal configuration error, not a pass.
 
 Pipeline: push `main` → derive catalogue → gates → build → force-push orphan
-`deploy` branch → `actions/deploy-pages` → dispatch the EdgeOne rebuild → verify.
+`deploy` branch → dispatch the EdgeOne rebuild → verify.
 
 ## Gates
 

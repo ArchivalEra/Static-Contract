@@ -103,7 +103,9 @@ Content-Type) live on the site side.
 with no server-side programmability, so it cannot proxy or 302 release bytes: `fetch` does not
 execute HTML/JS redirects, and `_redirects` is not supported (measured 404). Keeping it listed
 made the acceptance gate report a permanent, unfixable red — the honest thing is to remove it
-rather than let a channel look available while it can never carry bytes.
+rather than let a channel look available while it can never carry bytes. The Pages site itself
+was **deleted**, not merely unlisted: a mirror that stops updating still answers `200` with a
+stale catalogue, which is worse than a `404`.
 
 **Online acceptance**: `scripts/verify-channels.py` checks, after deployment, each channel against
 **this build's artifact fingerprint** (`STATIC-CONTRACT-BUILD <hash>` written into `index.html`) and
