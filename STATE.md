@@ -80,7 +80,8 @@ GitHub Pages was removed on 2026-11-04: a Pages site is inert static hosting and
 never proxy or redirect release bytes, so as a fetch channel it was pure false signal.
 The site itself is deleted rather than left serving a stale artifact.
 
-`site/channels.json` carries `owned`. **Only a failure on an owned channel blocks a
+Each matrix job verifies **only its own branch and mirror** (`SC_CHANNELS_ONLY`), so
+`deploy-eo` never waits on `deploy-cf`. `site/channels.json` carries `owned`. **Only a failure on an owned channel blocks a
 release.** External channels report a warning and never silently disappear. A channel
 list with no `owned` entry is a fatal configuration error, not a pass.
 

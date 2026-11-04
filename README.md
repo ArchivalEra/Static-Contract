@@ -51,7 +51,7 @@ tried first; `base_proxy` = GitHub origin (`https://github.com/...`), the fallba
 **One deploy branch per mirror** (ruled 2026-11-04): `deploy-eo` (base →
 `static.isui.ren`) and `deploy-cf` (base → `static.mango-mesa.ccwu.cc`). Each site line
 fetches from its nearest mirror. The two catalogues differ only in the `base` host.
-Adding a mirror is one matrix row plus one branch.
+Adding a mirror is one matrix row plus one branch. Each matrix job verifies only its own branch and mirror, so a branch never blocks on a sibling.
 
 **Published surface is seven files** (shelf plus contract only): `index.html`, `files.json`, `catalogue.json`, `sources.json`, `LICENSE`, and the two current contract documents. Everything else in this repository — live state, maintenance guide, incident log, rulings, tools, superseded drafts — stays in the repo and is never published. Gate H9 enforces the whitelist in both directions; H6 checks each channel against its own file list.
 

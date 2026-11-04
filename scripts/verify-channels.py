@@ -204,9 +204,10 @@ def main(argv):
     only = os.environ.get("SC_CHANNELS_ONLY", "").strip()
     chans_doc = doc.get("channels") or []
     if only:
-        # owned 通道永远保留 —— 否则零 owned 守卫会把每次矩阵 job 判成配置错误
-        chans_doc = [c for c in chans_doc if c.get("owned") or
-                     only.lower() in (c.get("name", "") + " " + c.get("note", "")).lower()]
+        # 只留本矩阵项对应的通道。两个 owned 分支各自归各自矩阵项，
+        # 不互相检查。过滤后若无 owned，下面的零值守卫会 FATAL。
+        chans_doc = [c for c in chans_doc
+                     if only.lower() in (c.get("name", "") + " " + c.get("note", "")).lower()]
     channels = [(c["name"], c["base"], bool(c.get("owned")))
                 for c in chans_doc]
     # ★ 零值守卫（2026-11-04 撤掉 github-pages 后新增）：

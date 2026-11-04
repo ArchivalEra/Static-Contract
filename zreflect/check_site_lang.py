@@ -474,9 +474,11 @@ def main():
             # 矩阵模式下每个 job 只验自己那条站点线（CI 注入 SC_CHANNELS_ONLY）。
             only = os.environ.get("SC_CHANNELS_ONLY", "").strip()
             if only:
-                # owned 通道永远保留 —— 它是制品权威，且无 owned 会触发守卫
-                chans = [c for c in chans if c.get("owned") or
-                         only.lower() in (c.get("name", "") + " " + c.get("note", "")).lower()]
+                # 只留本矩阵项对应的通道（按 label 匹配 name/note）。
+                # 不再无条件保留所有 owned —— 现在 owned 有两个（deploy-eo / deploy-cf），
+                # 各自只该验自己那一个。若过滤后无 owned，交给外层守卫报 FATAL。
+                chans = [c for c in chans
+                         if only.lower() in (c.get("name", "") + " " + c.get("note", "")).lower()]
         except (OSError, ValueError):
             chans = []
         # ★ 遍历源 = 产物清单（files.json），不是 HTML 里的链接。
