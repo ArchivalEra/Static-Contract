@@ -95,9 +95,11 @@ switches links" has never run end to end.
 Open items: U1 codecs order (question 05), U2 per-entry `chunkSize`, U3 asset name product prefix,
 U4 rollout schedule for the remaining repositories.
 
-**Deployment (two channels, one artifact)**: push `main` → the `sync-deploy` workflow →
-**the same `site/dist`** → force-push an orphan `deploy` branch, which both mirror channels
-read (the Cloudflare Worker fetches it at runtime; EdgeOne serves it as a static tree).
+**Deployment (one build, one branch per mirror)**: push `main` → the `sync-deploy` workflow
+runs a matrix → each entry force-pushes its own orphan branch (`deploy-eo`, `deploy-cf`) →
+the matching mirror reads it (the Cloudflare Worker fetches `deploy-cf` at runtime; EdgeOne's
+CI takes `deploy-eo` as a static tree). The two branches differ only in `catalogue.json`'s
+`base` host.
 
 Channels: `https://static.mango-mesa.ccwu.cc/` (Cloudflare) ·
 `https://isui.ren/static/` (EdgeOne, China-facing path). Header semantics (ETag / `304` /
@@ -118,16 +120,16 @@ agree with each other** — when every channel is stuck on an old artifact, agre
 well (that is exactly how I misjudged it once on 2026-11-01).
 
 > **Fixed (2026-11-01, shirone `mail/006`)**: EdgeOne used to reverse-proxy Cloudflare's Worker
-> inline snapshot and did not follow the `deploy` branch (measured: two builds behind). The three
-> legs now deploy independently: CF reads the raw `deploy` branch at runtime, and CI drops the
-> `deploy` branch into EO's static tree; the count of `cf-ray/nel/report-to` in EO response headers
-> is 0. Fingerprints on all three channels and the catalogue sha all equal the `deploy` branch.
-> **The `deploy` branch is the only artifact and the correct entry point for consumers** — do not run
-> `build-site.py` (it needs an already-derived catalogue; run on its own it only produces the empty
-> fallback).
-> **EO updates are triggered by our `sync-deploy` dispatching their workflow** (pushing the `deploy`
-> branch does not trigger them). This needs `HEART_DISPATCH_TOKEN`; without it the step says so and
-> skips, and EO stays on the previous build.
+> inline snapshot and did not follow the deploy branch (measured: two builds behind). Each leg now
+> deploys independently: CF reads `deploy-cf` at runtime, and CI drops `deploy-eo` into EO's static
+> tree; the count of `cf-ray/nel/report-to` in EO response headers is 0.
+> **`deploy-eo` / `deploy-cf` are the artifacts and the correct entry point for consumers** — do not
+> run `build-site.py` (it needs an already-derived catalogue; run on its own it only produces the
+> empty fallback).
+> **EO updates are triggered by our `sync-deploy` dispatching their workflow** (pushing a branch
+> does not trigger them). This needs `HEART_DISPATCH_TOKEN`; without it the step says so and skips,
+> and EO stays on the previous build.
+> The original single `deploy` branch was **deleted** on 2026-11-04 once both mirrors had switched.
 
 CI: the `gates` workflow runs the same criteria as the local hooks (fact-block reconciliation + the
 full gate roster + module self-tests); the environment explicitly installs `zstandard` (the

@@ -85,13 +85,14 @@ and its gates are in `STATE.md`).
   never enters the catalogue, and the reason is written into the catalogue's `excluded` (public,
   auditable).
 
-- **Deploy exit**: the `deploy` branch = the pure site artifact (a single orphan commit), written
-  only by the workflow; GitHub Pages is deployed head-on by the same workflow — all three channels
-  are byte-identical to the same source.
+- **Deploy exit**: one branch per mirror — `deploy-eo` and `deploy-cf`. Each is the pure site
+  artifact (a single orphan commit) written only by the workflow, and each carries a catalogue
+  whose `base` points at that mirror. The two are **not** byte-identical: only `catalogue.json`
+  differs. Adding a mirror is one matrix row plus one branch.
 
 - **Amending the canon**: open a `questions/` entry first (with an executable settling criterion) →
   rule → amend the canon, and record the ruling's wording and date in `STATE.md`.
   **The criteria for rejected designs must stay in canon §8 so nobody re-opens them.**
 
 - **Red line**: no release artifact (tar / zip / wasm / whl / chunks) enters `main`, and none enters
-  `deploy` — a build gate turns red (`scripts/build-site.py` artifact scan).
+  any `deploy-*` branch — a build gate turns red (`scripts/build-site.py` artifact scan).
