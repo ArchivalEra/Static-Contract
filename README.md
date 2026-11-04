@@ -44,9 +44,10 @@ Reproduce: `python3 tools/make-manifest-v4.py --selftest && python3 tools/check-
 | `questions/` | Open-questions ledger (`05`: zstd vs gzip measured on the real EdgeOne link) |
 | `STATE.md` | Live state (Einfacht format: states only what is true now, with the rerun command next to each assertion) |
 | `maintaince.md` | Direction and map (maintenance boundary / routine / red lines) |
-**Proxy path for release bytes** (ruled 2026-11-03, pending EdgeOne config):
-`base_proxy` = `base` with the host swapped to `https://isui.ren/` — same shape as
-`base`, filled automatically by the deriver once the reverse-proxy rule is live.
+**Fetch roots** (canon v1.1 §5.3, ruled 2026-11-04): `base` = cluster mirror
+(`https://static.isui.ren/...`, tried first); `base_proxy` = GitHub origin
+(`https://github.com/...`, the fallback when `base` is unreachable). Same path shape,
+host only. Both are filled by the deriver.
 
 **Published surface is seven files** (shelf plus contract only): `index.html`, `files.json`, `catalogue.json`, `sources.json`, `LICENSE`, and the two current contract documents. Everything else in this repository — live state, maintenance guide, incident log, rulings, tools, superseded drafts — stays in the repo and is never published. Gate H9 enforces the whitelist in both directions; H6 checks each channel against its own file list.
 
@@ -90,16 +91,19 @@ switches links" has never run end to end.
 Open items: U1 codecs order (question 05), U2 per-entry `chunkSize`, U3 asset name product prefix,
 U4 rollout schedule for the remaining repositories.
 
-**Deployment (three channels in parallel, one artifact)**: push `main` → the `sync-deploy`
-workflow → **the same `site/dist`**:
+**Deployment (two channels, one artifact)**: push `main` → the `sync-deploy` workflow →
+**the same `site/dist`** → force-push an orphan `deploy` branch, which both mirror channels
+read (the Cloudflare Worker fetches it at runtime; EdgeOne serves it as a static tree).
 
-1. Force-push an orphan `deploy` branch (CF Pages / EdgeOne Pages listen on it);
-2. `actions/deploy-pages` deploys GitHub Pages.
-
-Channels: `https://archivalera.github.io/Static-Contract/` ·
-`https://static.mango-mesa.ccwu.cc/` (Cloudflare) ·
+Channels: `https://static.mango-mesa.ccwu.cc/` (Cloudflare) ·
 `https://isui.ren/static/` (EdgeOne, China-facing path). Header semantics (ETag / `304` /
 Content-Type) live on the site side.
+
+**GitHub Pages was removed from the channel list on 2026-11-04.** It is a pure static host
+with no server-side programmability, so it cannot proxy or 302 release bytes: `fetch` does not
+execute HTML/JS redirects, and `_redirects` is not supported (measured 404). Keeping it listed
+made the acceptance gate report a permanent, unfixable red — the honest thing is to remove it
+rather than let a channel look available while it can never carry bytes.
 
 **Online acceptance**: `scripts/verify-channels.py` checks, after deployment, each channel against
 **this build's artifact fingerprint** (`STATIC-CONTRACT-BUILD <hash>` written into `index.html`) and

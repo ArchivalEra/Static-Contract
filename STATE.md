@@ -83,15 +83,17 @@ Execution reads the roster (`registry --run commit`), never a filename glob.
 
 ## base_proxy ruling (2026-11-03)
 
+Canon v1.1 §5.3 defines both fields: **`base` = cluster mirror, tried first;
+`base_proxy` = GitHub origin, the fallback.** Same path shape, host only.
+
 `base_proxy` is `base` with the host swapped: `https://isui.ren/<owner>/<repo>/releases/download/<tag>/`.
 Same shape as `base` — clients need zero changes, and the proxy provider's path
 layout never leaks into the contract (same criterion that rejected platform
 capacity limits in canon §3).
 
-Filled by `scripts/sync-catalogue.py` at derivation time as a deterministic
-function of `base` (one `replace`). **Not yet filled**: the EdgeOne rule is being
-configured by shirone (their mail 029 asked for this ruling; my reply is their
-mail 012). Filling it before the rule goes live would publish dead links.
+Both are filled by `scripts/sync-catalogue.py` at derivation time. Live as of
+2026-11-04: mirrors verified byte-passing, 18/18 releases reachable on **both**
+roots (36/36 HEAD checks against `manifest.json`).
 
 ## Open
 

@@ -1,6 +1,8 @@
 name: sync-deploy
 # main push → 派生 catalogue（严格校验）+ 构建站点 → orphan 单提交强推 deploy 分支。
-# CF Pages / EdgeOne Pages 监听 deploy 分支，从而实现「main 修改完 deploy 就更新」。
+# 两条镜像通道从 deploy 分支取（CF Worker 运行期回源、EdgeOne 静态树）。
+# 2026-11-04 撤掉 GitHub Pages：纯静态托管无服务端可编程能力，**取不了 release 字节**
+# （fetch 不跟 HTML 跳转，_redirects 也不被支持），留着只会让人以为它是可用通道。
 # deploy 分支永远只有一个无父提交（当前站点产物），无历史膨胀。
 #
 # 也定时跑：catalogue 是**关于 release 现状的实测**，上游发新 release 不一定推我这个仓。
@@ -19,8 +21,6 @@ on:
 
 permissions:
   contents: write
-  pages: write
-  id-token: write
 
 concurrency:
   group: sync-deploy
@@ -72,17 +72,6 @@ jobs:
               commit -qm "deploy: sync from main@${SHA::7} [skip ci]"
           git remote add origin "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push -q --force origin deploy
-
-      # ── 通道三：GitHub Pages ──
-      # 同一份 site/dist（构建一次，与 deploy 分支逐字节同源）。三通道并行：
-      #   ① deploy 分支 → CF Pages / EdgeOne Pages（外部托管方监听）
-      #   ② 本段：actions/deploy-pages 正面部署（无需 build_type=branch）
-      # 用户裁定（2026-11-01）：pages + cf pages + edgeone 三条并行，一份产物三地部署。
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: site/dist
-      - uses: actions/deploy-pages@v4
 
       # ── 触发 EdgeOne 通道重建（2026-11-01 实测补的最后一环）──
       # EO 静态树住在 shirone 的 `isui.ren-heart` 仓 deploy 分支，由**他们**的

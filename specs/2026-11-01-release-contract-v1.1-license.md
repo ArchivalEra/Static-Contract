@@ -353,6 +353,39 @@ The protocol **is not responsible for verifying that a declaration is true**, on
 
 **Exactly those two items from the manifest, copied verbatim.** No derivation, no timestamp added, no nested sha.
 
+### 5.3 `base` and `base_proxy`
+
+Each catalogue entry carries two fetch roots, both with the same shape
+(`<host>/<owner>/<repo>/releases/download/<tag>/`, trailing slash included):
+
+| Field | Meaning | Current value |
+|---|---|---|
+| `base` | The cluster mirror. **The client tries this first.** | `https://static.isui.ren/<owner>/<repo>/releases/download/<tag>/` (EdgeOne rule engine proxying GitHub) |
+| `base_proxy` | **The fallback**, used when `base` cannot be reached. Points at the origin itself. | `https://github.com/<owner>/<repo>/releases/download/<tag>/` |
+
+Ruled 2026-11-04: `base_proxy` is the fallback path, not the primary one. Earlier
+revisions of this field (and of the whole catalogue) had the two flipped or left it
+`null` — the field predates this canon section and was never defined here until now.
+
+Rules the client and the mirror provider can rely on:
+
+1. Both fields have the **same path shape**, differing only in host. The client runs
+   the identical algorithm against either root; swapping hosts changes nothing else.
+2. **The proxy provider's path layout never enters the contract.** A mirror is free to
+   implement `/releases/download/...` behind any internal routing it likes, as long as
+   the public path matches the shape above. This is the same criterion that rejected
+   encoding platform capacity limits into the contract.
+3. `base` failure is **not** a protocol error. Falling back to `base_proxy` is the
+   designed behaviour, and mirrors may rate-limit (a mirror with a request quota is a
+   valid `base`; the fallback exists precisely because mirrors can be imperfect).
+4. The derivation fills both fields as a deterministic function of the release
+   (`<owner>/<repo>/<tag>` come from the release itself); neither field is hand-written.
+
+Historical note: the mirror hosts currently are `static.isui.ren` (EdgeOne rule engine
+proxying GitHub, byte-passing) and `static.mango-mesa.ccwu.cc` (Cloudflare Worker,
+byte-passing with a request quota). The earlier idea of the site mirroring bytes itself
+was dropped: the site hosts zero bytes, and the mirrors proxy bytes from the origin.
+
 ---
 
 ## 6. Migration

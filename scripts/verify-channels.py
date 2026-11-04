@@ -203,6 +203,14 @@ def main(argv):
     # 那会让问题叠加（我的新产物上不去，他们的通道还没人修）。
     channels = [(c["name"], c["base"], bool(c.get("owned")))
                 for c in doc.get("channels") or []]
+    # ★ 零值守卫（2026-11-04 撤掉 github-pages 后新增）：
+    #   没有任何 owned 通道 ⇒ 这个闸门再也阻塞不了任何东西。
+    #   「全部是外通道」不等于「没有我方责任」—— 它是判据失效。
+    if not any(o for _n, _b, o in channels):
+        print("FATAL: 通道清单里没有任何 owned=true 的通道 —— 验收永远不会阻塞发布。"
+              "至少要把一条我方负责的通道标 owned（例如 deploy 分支本身）。",
+              file=sys.stderr)
+        return 2
     if not channels:
         print("FATAL: channels.json 里没有通道 —— 零通道不是「全通过」", file=sys.stderr)
         return 2

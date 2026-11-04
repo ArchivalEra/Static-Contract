@@ -142,7 +142,13 @@ def verify_entry(repo, rel, manifest_bytes, assets_by_name, check_runner):
     """
     reasons = []
     tag = rel.get("tag_name") or "?"
-    base = ("https://github.com/%s/releases/download/%s/" % (repo, tag))
+    # ★ base / base_proxy 语义（用户裁定 2026-11-04，shirone mail/033 转达）：
+    #   **base = 集群镜像（平时走这条），base_proxy = GitHub（兜底线）**。
+    #   之前是反的（base=GitHub、proxy=null）。两条镜像线均实测可取货：
+    #   static.isui.ren（EdgeOne 规则引擎回源）、static.mango-mesa.ccwu.cc（CF Worker）。
+    #   CF 免费版有 429 限流 ⇒ 它们放 mirror 档；GitHub 放 proxy 兜底档。
+    base = ("https://static.isui.ren/%s/releases/download/%s/" % (repo, tag))
+    base_proxy = ("https://github.com/%s/releases/download/%s/" % (repo, tag))
 
     # G1 有 manifest 且平台给了 digest
     mas = assets_by_name.get("manifest.json")
@@ -223,6 +229,7 @@ def verify_entry(repo, rel, manifest_bytes, assets_by_name, check_runner):
         # 实测产生 `OpenModelica-Full-Wasm/v0.2.0-wasm32/`。manifest.id 本身就是完整 id。
         "id": str(man.get("id") or ("%s/%s" % (repo, tag))),
         "base": base,
+        "base_proxy": base_proxy,
         "manifest_sha256": got,
         "license": lic_out,
     }, []
