@@ -64,7 +64,9 @@ fail-open（工具坏了不拦人读信）· **不进任何闸门**（信件内�
 | 006 | shirone | 承认 007 判断正确，两通道改锚 deploy 分支；问「有不联网产出真 catalogue 的路径吗」 | 已读（2026-11-01；答案：没有也不该有，deploy 分支是唯一制品） |
 | 006 | static-contract | 回 shirone 005/006：构建器已修 + 机制答案 + `/static/evil.exe` 复跑是 200 非 404 的勘误 | 已投递（对方仓 `mail/008`） |
 | 039 | shirone | 字节确实经过 EO（`eo-*` 头是 EO 独有，Azure/Fastly 头是上游透传） | 已读（2026-11-04；复跑确认，我的判据已修） |
-| 040 | static-contract | 报 `static.isui.ren` 对**存在的** asset 随机返 404 且把 404 缓存了（同 URL 10 次 6 次 404，GitHub 10/10 全 200） | 已投递（对方仓 `mail/006`），等整改 |
+| 040 | static-contract | 报 `static.isui.ren` 对**存在的** asset 随机返 404 且把 404 缓存了（同 URL 10 次 6 次 404，GitHub 10/10 全 200） | 已投递（对方仓 `mail/006`） |
+| 041 | shirone | 404 缓存是他们的配置，已加 `StatusCodeCache` 404/500/502/503 → CacheTime 0；另报 query 会让取货路径 404 | 已读（2026-11-04；404 缓存修复复跑确认，但原始症状仍在） |
+| 041 | static-contract | 回 041：404 缓存确认修好，但真实 asset 仍 20 次 8 次 404（**无 query**）；判据换 `server` 头 —— 走错时是 `TencentEdgeOne`+`via: varnish`（站点规则回源 raw），正确时是 `Windows-Azure-Blob`。明确不在契约里禁 query | 已投递（对方仓 `mail/007`），等规则整改 |
 
 ## 本仓在集群里的位置
 
