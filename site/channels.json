@@ -2,23 +2,30 @@
  "schema": 1,
  "channels": [
   {
-   "name": "deploy-branch",
-   "base": "https://raw.githubusercontent.com/ArchivalEra/Static-Contract/deploy/",
-   "note": "我方 workflow 直接产出的制品（orphan 单提交）。它是两个镜像的上游：CF 运行期回源它，EO 由 CI 从它取。它是**我唯一负责的通道**，所以它的失败阻塞发布（2026-11-04 撤 GH Pages 后加）。",
+   "name": "deploy-eo",
+   "base": "https://raw.githubusercontent.com/ArchivalEra/Static-Contract/deploy-eo/",
+   "note": "EdgeOne 镜像的源分支（owned）。base 指向 static.isui.ren。",
    "owned": true
   },
   {
-   "name": "cloudflare",
-   "base": "https://static.mango-mesa.ccwu.cc/",
-   "note": "运行期回源 raw deploy 分支；2026-11-02 起从 /static/ 迁到根路径 /",
-   "owned": false
+   "name": "deploy-cf",
+   "base": "https://raw.githubusercontent.com/ArchivalEra/Static-Contract/deploy-cf/",
+   "note": "Cloudflare 镜像的源分支（owned）。base 指向 static.mango-mesa.ccwu.cc。",
+   "owned": true
   },
   {
    "name": "edgeone",
    "base": "https://isui.ren/static/",
-   "note": "shirone 侧 EdgeOne Makers 独立静态树，CI 取 deploy 分支；非反代 CF（2026-11-01 已改正）。**更新由我方 sync-deploy 的 dispatch 步骤触发**（2026-11-01 补的最后一环）：推完 deploy 分支后正面 dispatch shirone 的 deploy workflow；未配 HEART_DISPATCH_TOKEN 时明说跳过，EO 会停在上一次",
+   "note": "EdgeOne 站点线",
+   "owned": false
+  },
+  {
+   "name": "cloudflare",
+   "base": "https://static.mango-mesa.ccwu.cc/",
+   "note": "Cloudflare 站点线",
    "owned": false
   }
  ],
- "_removed_2026_11_04": "撤掉 github-pages 通道：纯静态托管无服务端可编程能力，无法代理或重定向 release 字节（fetch 不执行 HTML/JS 跳转，_redirects 实测 404）。站点仍可托管，但它不能作为取货通道，故不再列入验收清单 —— 留在清单里会让验收闸门把「这条通道取不到货」当成待修缺陷。"
+ "_removed_2026_11_04": "撤掉 github-pages 通道：纯静态托管无服务端可编程能力，无法代理或重定向 release 字节（fetch 不执行 HTML/JS 跳转，_redirects 实测 404）。站点仍可托管，但它不能作为取货通道，故不再列入验收清单 —— 留在清单里会让验收闸门把「这条通道取不到货」当成待修缺陷。",
+ "_why": "每镜像源一个 deploy 分支（用户裁定 2026-11-04）。矩阵 job 用 SC_CHANNELS_ONLY 只验自己那条：deploy-eo + edgeone / deploy-cf + cloudflare；owned 通道永远保留。"
 }

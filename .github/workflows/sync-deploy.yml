@@ -29,6 +29,21 @@ concurrency:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    # ★ 一个镜像源 = 一个 deploy 分支（用户裁定 2026-11-04：「出两个 deploy 分支
+    #   分别叫 deploy-eo 和 deploy-cf，这样甚至以后加更多源也行」）。
+    #   每条站点线派生自己的 catalogue（base 指向该源的镜像 host），
+    #   于是「三处 catalogue 逐字节相同」不再成立 —— 改为「每处自洽」。
+    #   加镜像 = 加一行矩阵项 + 一个分支 + 托管方监听。
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - branch: deploy-eo
+            mirror: https://static.isui.ren
+            label: EdgeOne
+          - branch: deploy-cf
+            mirror: https://static.mango-mesa.ccwu.cc
+            label: Cloudflare
     steps:
       - uses: actions/checkout@v4
 
@@ -42,8 +57,10 @@ jobs:
       - name: 派生 catalogue（严格校验，坏的不上架）
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          SC_MIRROR: ${{ matrix.mirror }}
         run: |
           set -euo pipefail
+          echo "mirror: $SC_MIRROR → branch ${{ matrix.branch }}"
           python3 scripts/sync-catalogue.py --selftest
           python3 scripts/sync-catalogue.py --out "$RUNNER_TEMP/catalogue.json"
           # 同时放一份到仓根，供站点语言闸门 H4 检查（它要读真实排除原因）
@@ -56,7 +73,7 @@ jobs:
       - name: 构建站点
         run: python3 scripts/build-site.py --out site/dist
 
-      - name: 发布到 deploy 分支（orphan 单提交，强推）
+      - name: 发布到 ${{ matrix.branch }} 分支（orphan 单提交，强推）
         env:
           TOKEN: ${{ github.token }}
           SHA: ${{ github.sha }}
@@ -65,13 +82,14 @@ jobs:
           d=$(mktemp -d)
           cp -a site/dist/. "$d/"
           cd "$d"
-          git init -q -b deploy
+          BRANCH="${{ matrix.branch }}"
+          git init -q -b "$BRANCH"
           git add -A
           git -c user.name=static-contract-bot \
               -c user.email=ArchivalEra@users.noreply.github.com \
-              commit -qm "deploy: sync from main@${SHA::7} [skip ci]"
+              commit -qm "$BRANCH: sync from main@${SHA::7} [skip ci]"
           git remote add origin "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          git push -q --force origin deploy
+          git push -q --force origin "$BRANCH"
 
       # ── 触发 EdgeOne 通道重建（2026-11-01 实测补的最后一环）──
       # EO 静态树住在 shirone 的 `isui.ren-heart` 仓 deploy 分支，由**他们**的
@@ -82,6 +100,7 @@ jobs:
       # 仅当 secret HEART_DISPATCH_TOKEN 配置了才跑：缺 token 时**明说跳过**，
       # 不让验收闸门去替一个没发生的动作背锅（那会把真失败伪装成环境缺陷）。
       - name: 触发 EdgeOne 通道（dispatch shirone 的 deploy workflow）
+        if: matrix.branch == 'deploy-eo'
         env:
           TOKEN: ${{ secrets.HEART_DISPATCH_TOKEN }}
         run: |
@@ -124,14 +143,18 @@ jobs:
       # ★ 在线死链探测：**内容指纹**，不是状态码。
       # EdgeOne 对不存在路径返回 200 + 兜底页（实测 611B），只看状态码会全绿。
       # 放在线上验收之后 —— 那时三个通道都已吃到本次产物。
-      - name: 在线死链探测（各通道逐链接，指纹判定）
+      - name: 在线死链探测（本镜像源逐链接，指纹判定）
+        env:
+          SC_CHANNELS_ONLY: ${{ matrix.label }}
         run: |
           set -euo pipefail
           # 在线探测发现死链 ⇒ 红。**某通道不可达 ⇒ 也红**（「它没问题」没有证据）。
           # 若不希望某通道阻塞发布，把它的 base 从 site/channels.json 移除并写明原因。
           python3 zreflect/check_site_lang.py --online
 
-      - name: 线上验收（各通道必须吃到本次产物）
+      - name: 线上验收（本镜像源必须吃到本次产物）
+        env:
+          SC_CHANNELS_ONLY: ${{ matrix.label }}
         run: |
           set -euo pipefail
           python3 scripts/verify-channels.py --selftest

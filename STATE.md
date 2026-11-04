@@ -61,13 +61,20 @@ copy it rather than maintaining their own list.
 
 ## Deployment
 
-One artifact, three channels:
+One build, **one deploy branch per mirror** (ruled 2026-11-04): `deploy-eo` and
+`deploy-cf`. Each carries a catalogue whose `base` points at that mirror, so each site
+line fetches from its nearest mirror. Adding a mirror means one matrix entry and one
+branch — no code change.
 
-| Channel | URL | Owned | Role |
+| Branch | Mirror (`base` host) | Site line | Owned |
 |---|---|---|---|
-| deploy branch | `https://raw.githubusercontent.com/ArchivalEra/Static-Contract/deploy/` | **yes** | artifact of record; both mirrors read from it |
-| Cloudflare | `https://static.mango-mesa.ccwu.cc/` | no | site mirror + release byte proxy |
-| EdgeOne | `https://isui.ren/static/` | no | site mirror (release bytes at `static.isui.ren`) |
+| `deploy-eo` | `https://static.isui.ren/` | `https://isui.ren/static/` | **yes** |
+| `deploy-cf` | `https://static.mango-mesa.ccwu.cc/` | `https://static.mango-mesa.ccwu.cc/` | **yes** |
+
+`base_proxy` is `https://github.com/...` in both — the fallback when a mirror fails.
+The two catalogues are **not byte-identical** (different `base` host); each is
+self-consistent. Cross-mirror range continuation was measured working, so a client may
+start on one mirror and finish on another or on `base_proxy`.
 
 GitHub Pages was removed on 2026-11-04: a Pages site is inert static hosting and can
 never proxy or redirect release bytes, so as a fetch channel it was pure false signal.
@@ -77,8 +84,8 @@ The site itself is deleted rather than left serving a stale artifact.
 release.** External channels report a warning and never silently disappear. A channel
 list with no `owned` entry is a fatal configuration error, not a pass.
 
-Pipeline: push `main` → derive catalogue → gates → build → force-push orphan
-`deploy` branch → dispatch the EdgeOne rebuild → verify.
+Pipeline: push `main` → for each matrix entry: derive its catalogue → gates → build →
+force-push orphan branch → verify. Only the EO entry dispatches the EdgeOne rebuild.
 
 ## Gates
 

@@ -201,8 +201,14 @@ def main(argv):
     # 归属：owned=true 的通道失败**阻塞发布**；外部通道失败只报告。
     # 理由（2026-11-02，CF 全 404 事故）：别人的通道挂了不该拦停我的产物上线，
     # 那会让问题叠加（我的新产物上不去，他们的通道还没人修）。
+    only = os.environ.get("SC_CHANNELS_ONLY", "").strip()
+    chans_doc = doc.get("channels") or []
+    if only:
+        # owned 通道永远保留 —— 否则零 owned 守卫会把每次矩阵 job 判成配置错误
+        chans_doc = [c for c in chans_doc if c.get("owned") or
+                     only.lower() in (c.get("name", "") + " " + c.get("note", "")).lower()]
     channels = [(c["name"], c["base"], bool(c.get("owned")))
-                for c in doc.get("channels") or []]
+                for c in chans_doc]
     # ★ 零值守卫（2026-11-04 撤掉 github-pages 后新增）：
     #   没有任何 owned 通道 ⇒ 这个闸门再也阻塞不了任何东西。
     #   「全部是外通道」不等于「没有我方责任」—— 它是判据失效。

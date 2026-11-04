@@ -471,6 +471,12 @@ def main():
             cdoc = json.load(open(os.path.join(REPO, "site", "channels.json"),
                                   encoding="utf-8"))
             chans = cdoc.get("channels") or []
+            # 矩阵模式下每个 job 只验自己那条站点线（CI 注入 SC_CHANNELS_ONLY）。
+            only = os.environ.get("SC_CHANNELS_ONLY", "").strip()
+            if only:
+                # owned 通道永远保留 —— 它是制品权威，且无 owned 会触发守卫
+                chans = [c for c in chans if c.get("owned") or
+                         only.lower() in (c.get("name", "") + " " + c.get("note", "")).lower()]
         except (OSError, ValueError):
             chans = []
         # ★ 遍历源 = 产物清单（files.json），不是 HTML 里的链接。

@@ -46,6 +46,12 @@ CHECKER = os.path.join(HERE, "tools", "check-release-v4.py")
 GITHUB_API = "https://api.github.com"
 ACCEPT_SCHEMA = (2, 3)
 
+# ★ 取货镜像 host（用户裁定 2026-11-04）：
+#   每个镜像源派生自己的 catalogue → 自己的 deploy 分支（deploy-eo / deploy-cf / ...）。
+#   这样每条站点线就近取货，且以后加镜像只需加一个分支 + 一个 CI 矩阵项。
+#   默认 EO；未设时用 EO，保持向后兼容。
+MIRROR = os.environ.get("SC_MIRROR", "https://static.isui.ren")
+
 
 # ── GitHub 取数（可注入 —— 自证用假 fetcher，绝不联网）────────────────────────
 def _token():
@@ -147,7 +153,9 @@ def verify_entry(repo, rel, manifest_bytes, assets_by_name, check_runner):
     #   之前是反的（base=GitHub、proxy=null）。两条镜像线均实测可取货：
     #   static.isui.ren（EdgeOne 规则引擎回源）、static.mango-mesa.ccwu.cc（CF Worker）。
     #   CF 免费版有 429 限流 ⇒ 它们放 mirror 档；GitHub 放 proxy 兜底档。
-    base = ("https://static.isui.ren/%s/releases/download/%s/" % (repo, tag))
+    # 镜像 host 由调用方注入（用户裁定 2026-11-04：每个镜像源一个 deploy 分支，
+    # 以后加更多源只需加一行环境变量）。默认 EO。
+    base = ("%s/%s/releases/download/%s/" % (MIRROR.rstrip("/"), repo, tag))
     base_proxy = ("https://github.com/%s/releases/download/%s/" % (repo, tag))
 
     # G1 有 manifest 且平台给了 digest

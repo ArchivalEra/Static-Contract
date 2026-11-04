@@ -44,10 +44,14 @@ Reproduce: `python3 tools/make-manifest-v4.py --selftest && python3 tools/check-
 | `questions/` | Open-questions ledger (`05`: zstd vs gzip measured on the real EdgeOne link) |
 | `STATE.md` | Live state (Einfacht format: states only what is true now, with the rerun command next to each assertion) |
 | `maintaince.md` | Direction and map (maintenance boundary / routine / red lines) |
-**Fetch roots** (canon v1.1 §5.3, ruled 2026-11-04): `base` = cluster mirror
-(`https://static.isui.ren/...`, tried first); `base_proxy` = GitHub origin
-(`https://github.com/...`, the fallback when `base` is unreachable). Same path shape,
-host only. Both are filled by the deriver.
+**Fetch roots** (canon v1.1 §5.3, ruled 2026-11-04): `base` = cluster mirror,
+tried first; `base_proxy` = GitHub origin (`https://github.com/...`), the fallback when
+`base` is unreachable. Same path shape, host only.
+
+**One deploy branch per mirror** (ruled 2026-11-04): `deploy-eo` (base →
+`static.isui.ren`) and `deploy-cf` (base → `static.mango-mesa.ccwu.cc`). Each site line
+fetches from its nearest mirror. The two catalogues differ only in the `base` host.
+Adding a mirror is one matrix row plus one branch.
 
 **Published surface is seven files** (shelf plus contract only): `index.html`, `files.json`, `catalogue.json`, `sources.json`, `LICENSE`, and the two current contract documents. Everything else in this repository — live state, maintenance guide, incident log, rulings, tools, superseded drafts — stays in the repo and is never published. Gate H9 enforces the whitelist in both directions; H6 checks each channel against its own file list.
 
