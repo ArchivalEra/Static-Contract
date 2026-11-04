@@ -692,3 +692,89 @@ python3 scripts/sync-catalogue.py --selftest
 gh api repos/ArchivalEra/OpenModelica-Full-Wasm/releases --jq '.[].tag_name'
 ```
 
+## 2026-11-04 — EdgeOne site line moved host; and I broke the live site with a probe push
+
+**What happened**
+
+shirone removed the intermediate layer on the apex domain: `isui.ren/static` no
+longer serves this repository's artifact. Measured on every path under it — the
+answer is `200` plus isui.ren's own landing page, not the site's bytes. The
+contract site now lives on `static.isui.ren`, an EdgeOne accelerated domain
+(CNAME to `static.isui.ren.eo.dnse4.com`) whose rule engine splits by path: site
+paths to the `deploy-eo` branch on raw.githubusercontent.com, release paths to
+github.com. One host serves both the site tree and the release bytes.
+
+Three things in this repository still pointed at the old host, and each would have
+made the pipeline report a falsehood:
+
+1. `site/channels.json` still listed `https://isui.ren/static/` as the EdgeOne
+   site line. The acceptance gate would have probed a host whose every path
+   answers `200` with a landing page — and the content-fingerprint criterion
+   would have read that landing page as the site, so the gate would have gone
+   green on a dead channel.
+2. `sync-deploy.yml` still dispatched shirone's `deploy` workflow. That workflow
+   rebuilds isui.ren's own `/heart/` application, not this site. It was not
+   harmful, but it was not this site's update either.
+3. The online acceptance ran 6 rounds of 20 s. Both site lines cache with
+   `max-age=300`, so an update can sit behind the cache for longer than the gate
+   was willing to wait. A short wait reports "the channel did not pick this up"
+   when the truth is "the cache has not expired".
+
+The second half of this incident is mine. To measure EdgeOne's update latency I
+pushed a probe file to `deploy-eo` with `git push --force`. `deploy-eo` is the
+whole tree, not a directory: my probe commit contained one file, so the force-push
+replaced the entire site tree with that one file. The live site went to `404` on
+every path. I then pushed a second "restore" commit by hand, which is the same
+mistake a second time — the branch is owned by the pipeline, not by me.
+
+**Root cause**
+
+Two independent mistakes, one shared shape: **a measurement was made by writing
+to the thing being measured.**
+
+- The latency probe needed to know when EdgeOne picks up a changed file. Writing
+  that probe into the live artifact branch was the only way to do it, and it
+  meant the experiment destroyed its own subject.
+- The pipeline is the only writer of `deploy-eo`. The moment I push to it
+  directly, the branch stops being the pipeline's output and becomes my
+  scratchpad — and the live site follows it, because EdgeOne pulls that branch
+  directly.
+
+**Fix**
+
+- `site/channels.json` — the EdgeOne site line is `https://static.isui.ren/`.
+  The annotation records why, with the measurement that established it.
+- `.github/workflows/sync-deploy.yml` — the dispatch step is deleted. EdgeOne
+  pulls `deploy-eo` directly, so the branch push *is* the update. Measured: a
+  changed path appeared on the edge within 10 s of the push, with no dispatch.
+  The online acceptance now runs 12 rounds of 30 s, which covers the measured
+  300 s cache TTL.
+- Recovery: the site was restored by **changing `main` and letting the pipeline
+  rebuild the branch**, not by hand-pushing to `deploy-eo`. That is the only
+  correct repair — the branch is an output, and outputs are regenerated, not
+  patched.
+
+**Reproduce**
+
+```bash
+SC_HTTP_PROXY=http://127.0.0.1:2080 python3 zreflect/check_site_lang.py --online
+SC_HTTP_PROXY=http://127.0.0.1:2080 python3 examples/verify-three-lines.py
+gh api repos/ArchivalEra/Static-Contract/commits/deploy-eo --jq '.sha'
+curl -s https://static.isui.ren/catalogue.json | python3 -c "import json,sys;print(len(json.load(sys.stdin)['releases']))"
+```
+
+**Measured after the fix**
+
+```
+H6 edgeone   checked=6 dead=0 unreachable=0
+H6 cloudflare checked=6 dead=0 unreachable=0
+three-line: PASS cf / PASS eo / PASS base_proxy  (3/3)
+18/18 releases: both roots 200 + byte-identical manifest + sha matches catalogue
+```
+
+**Lesson**
+
+A pipeline exists so that the artifact is never edited by hand. The moment a
+measurement requires writing to the artifact, the measurement has become the
+edit. Measure by pushing to `main` and letting the pipeline run — slower, but it
+cannot destroy the thing it is measuring.
