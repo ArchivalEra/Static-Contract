@@ -223,11 +223,15 @@ def render_index(cat, fingerprint="", counts=None, channels=None):
     # 通道表：从 site/channels.json 生成（**不手写**）
     if channels:
         # 通道表：只显示 channels.json 里的 name + base。不自造摘要字段。
+        # ★ 页面只列 `public: true` 的通道。`deploy-*` 是验收闸门读的制品分支，
+        #   不是给人访问的站点 —— 列出它们只会让读者点进一个 raw 文件列表。
+        #   闸门的完整清单在 site/channels.json，那里的 `public` 字段只管页面。
+        shown = [c for c in channels if c.get("public", True)]
         ch_rows = "\n".join(
             '<tr><td>%s</td><td class="mono"><a href="%s">%s</a></td></tr>'
             % (html.escape(c.get("name", "?")), html.escape(c.get("base", "#")),
                html.escape(c.get("base", "?").rstrip("/").split("//")[-1]))
-            for c in channels)
+            for c in shown)
     else:
         ch_rows = '<tr><td colspan="3">(channels.json not configured)</td></tr>'
 
