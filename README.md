@@ -105,8 +105,17 @@ CI takes `deploy-eo` as a static tree). The two branches differ only in `catalog
 `base` host.
 
 Channels: `https://static.mango-mesa.ccwu.cc/` (Cloudflare) ·
-`https://isui.ren/static/` (EdgeOne, China-facing path). Header semantics (ETag / `304` /
+`https://static.isui.ren/` (EdgeOne, China-facing host). Header semantics (ETag / `304` /
 Content-Type) live on the site side.
+
+**The EdgeOne site line moved host on 2026-11-04**: it was `https://isui.ren/static/`
+and is now `https://static.isui.ren/`. The apex-domain intermediate layer was removed
+upstream — every path under `isui.ren/static/` now answers `200` with isui.ren's own
+611 B landing page, not this repository's artifact. `static.isui.ren` is an EdgeOne
+accelerated domain whose rule engine splits by path: site paths → the `deploy-eo` branch
+on raw.githubusercontent.com, release paths → github.com. So one host serves both the
+site tree and the release bytes, and pushing `deploy-eo` *is* the update — no dispatch
+step is needed (measured: a new path appeared on the edge within 10 s of the push).
 
 **GitHub Pages was removed from the channel list on 2026-11-04.** It is a pure static host
 with no server-side programmability, so it cannot proxy or 302 release bytes: `fetch` does not
@@ -126,14 +135,14 @@ well (that is exactly how I misjudged it once on 2026-11-01).
 
 > **Fixed (2026-11-01, shirone `mail/006`)**: EdgeOne used to reverse-proxy Cloudflare's Worker
 > inline snapshot and did not follow the deploy branch (measured: two builds behind). Each leg now
-> deploys independently: CF reads `deploy-cf` at runtime, and CI drops `deploy-eo` into EO's static
-> tree; the count of `cf-ray/nel/report-to` in EO response headers is 0.
+> deploys independently: CF reads `deploy-cf` at runtime, and EO's rule engine reads `deploy-eo`
+> from raw.githubusercontent.com; the count of `cf-ray/nel/report-to` in EO response headers is 0.
 > **`deploy-eo` / `deploy-cf` are the artifacts and the correct entry point for consumers** — do not
 > run `build-site.py` (it needs an already-derived catalogue; run on its own it only produces the
 > empty fallback).
-> **EO updates are triggered by our `sync-deploy` dispatching their workflow** (pushing a branch
-> does not trigger them). This needs `HEART_DISPATCH_TOKEN`; without it the step says so and skips,
-> and EO stays on the previous build.
+> **EO updates need no dispatch** (2026-11-04): EO pulls the `deploy-eo` branch directly, so the
+> branch push *is* the update. The old dispatch step (and `HEART_DISPATCH_TOKEN`) is gone; it
+> rebuilt isui.ren's own `/heart/` application, which is not this site.
 > The original single `deploy` branch was **deleted** on 2026-11-04 once both mirrors had switched.
 
 CI: the `gates` workflow runs the same criteria as the local hooks (fact-block reconciliation + the

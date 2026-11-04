@@ -68,8 +68,16 @@ branch — no code change.
 
 | Branch | Mirror (`base` host) | Site line | Owned |
 |---|---|---|---|
-| `deploy-eo` | `https://static.isui.ren/` | `https://isui.ren/static/` | **yes** |
+| `deploy-eo` | `https://static.isui.ren/` | `https://static.isui.ren/` | **yes** |
 | `deploy-cf` | `https://static.mango-mesa.ccwu.cc/` | `https://static.mango-mesa.ccwu.cc/` | **yes** |
+
+The EdgeOne site line **moved host** on 2026-11-04: it was `https://isui.ren/static/`
+and is now `https://static.isui.ren/`. The intermediate layer on the apex domain was
+removed upstream, so paths under the old host now answer with isui.ren's own landing
+page rather than this repository's artifact. `static.isui.ren` is an EdgeOne
+accelerated domain (CNAME → `static.isui.ren.eo.dnse4.com`) whose rule engine splits
+by path: site paths → the `deploy-eo` branch on raw.githubusercontent.com, release paths
+→ github.com. The same host therefore serves the site tree **and** the release bytes.
 
 `base_proxy` is `https://github.com/...` in both — the fallback when a mirror fails.
 The two catalogues are **not byte-identical** (different `base` host); each is
@@ -86,7 +94,10 @@ release.** External channels report a warning and never silently disappear. A ch
 list with no `owned` entry is a fatal configuration error, not a pass.
 
 Pipeline: push `main` → for each matrix entry: derive its catalogue → gates → build →
-force-push orphan branch → verify. Only the EO entry dispatches the EdgeOne rebuild.
+force-push orphan branch → verify. No dispatch step: EdgeOne pulls the `deploy-eo`
+branch directly, so the branch push *is* the update (measured — a new path appeared on
+the edge within 10 s of the push). Both site lines cache for `max-age=300`, so the
+online acceptance runs 12 × 30 s to cover the TTL.
 
 ## Gates
 
@@ -99,7 +110,7 @@ Execution reads the roster (`registry --run commit`), never a filename glob.
 Canon v1.1 §5.3 defines both fields: **`base` = cluster mirror, tried first;
 `base_proxy` = GitHub origin, the fallback.** Same path shape, host only.
 
-`base_proxy` is `base` with the host swapped: `https://isui.ren/<owner>/<repo>/releases/download/<tag>/`.
+`base_proxy` is `base` with the host swapped: `https://github.com/<owner>/<repo>/releases/download/<tag>/`.
 Same shape as `base` — clients need zero changes, and the proxy provider's path
 layout never leaks into the contract (same criterion that rejected platform
 capacity limits in canon §3).
@@ -140,12 +151,12 @@ license.**
 
 | 键 | 值 | 测于 | 复跑命令 |
 |---|---|---|---|
-| `catalogue_releases` | **0** | 2026-11-02T13:28:11+0800 | `python3 -c "import json;print(len(json.load(open('site/catalogue.json'))['releases']))"` |
-| `mail_unread` | **0** | 2026-11-02T13:28:11+0800 | `find mail -maxdepth 1 -name '[0-9]*.md' | wc -l` |
-| `site_build_selftest_pass` | **14** | 2026-11-02T13:28:11+0800 | `python3 scripts/build-site.py --selftest 2>/dev/null | grep -c '^PASS'` |
-| `specs_md` | **7** | 2026-11-02T13:28:09+0800 | `ls specs/*.md | wc -l` |
-| `tool_check_release_selftest_pass` | **37** | 2026-11-02T13:28:11+0800 | `python3 tools/check-release-v4.py --selftest 2>/dev/null | grep -c '^PASS'` |
-| `tool_manifest_selftest_pass` | **43** | 2026-11-02T13:28:11+0800 | `python3 tools/make-manifest-v4.py --selftest 2>/dev/null | grep -c '^PASS'` |
+| `catalogue_releases` | **0** | 2026-11-04T15:12:59+0800 | `python3 -c "import json;print(len(json.load(open('site/catalogue.json'))['releases']))"` |
+| `mail_unread` | **0** | 2026-11-04T15:12:59+0800 | `find mail -maxdepth 1 -name '[0-9]*.md' | wc -l` |
+| `site_build_selftest_pass` | **14** | 2026-11-04T15:12:59+0800 | `python3 scripts/build-site.py --selftest 2>/dev/null | grep -c '^PASS'` |
+| `specs_md` | **7** | 2026-11-04T15:12:57+0800 | `ls specs/*.md | wc -l` |
+| `tool_check_release_selftest_pass` | **37** | 2026-11-04T15:12:59+0800 | `python3 tools/check-release-v4.py --selftest 2>/dev/null | grep -c '^PASS'` |
+| `tool_manifest_selftest_pass` | **43** | 2026-11-04T15:12:59+0800 | `python3 tools/make-manifest-v4.py --selftest 2>/dev/null | grep -c '^PASS'` |
 
 6 条事实。
 <!-- /AUTO:FACTS -->

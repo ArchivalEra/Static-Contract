@@ -91,57 +91,16 @@ jobs:
           git remote add origin "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push -q --force origin "$BRANCH"
 
-      # ── 触发 EdgeOne 通道重建（2026-11-01 实测补的最后一环）──
-      # EO 静态树住在 shirone 的 `isui.ren-heart` 仓 deploy 分支，由**他们**的
-      # `.github/workflows/deploy.yml` 从**我仓 deploy 分支**取字节。也就是说：
-      # 我推 deploy 分支**不会**自动触发他们跑 —— 实测我推完新产物后 EO 仍停在
-      # 上一次（比 Pages 落后一个版本），必须有人去他们仓点一下。
-      # ⇒ 这里正面 dispatch 他们的 workflow（workflow_dispatch 已存在）。
-      # 仅当 secret HEART_DISPATCH_TOKEN 配置了才跑：缺 token 时**明说跳过**，
-      # 不让验收闸门去替一个没发生的动作背锅（那会把真失败伪装成环境缺陷）。
-      - name: 触发 EdgeOne 通道（dispatch shirone 的 deploy workflow）
-        if: matrix.branch == 'deploy-eo'
-        env:
-          TOKEN: ${{ secrets.HEART_DISPATCH_TOKEN }}
-        run: |
-          set -euo pipefail
-          if [ -z "${TOKEN:-}" ]; then
-            echo "::warning::未配置 HEART_DISPATCH_TOKEN —— EdgeOne 通道不会自动跟新，"
-            echo "::warning::它会停在上一次构建，直到 shirone 侧有人手动触发。"
-            echo "EDGEONE_DISPATCHED=skipped" >> "$GITHUB_ENV"
-            exit 0
-          fi
-          # 取 workflow id：失败必须立刻红。不加 -f 的话 401/403 也会打印
-          # 一串 401 然后往下走 —— 那种「明明没 dispatch 成功却写了
-          # EDGEONE_DISPATCHED=yes」会让验收闸门白等 5 分钟后报「EO 没吃到」，
-          # 把鉴权失败伪装成通道缺陷。这正是本文件上半段批评的那类错。
-          WF=$(curl -sSf -H "Authorization: token $TOKEN" \
-            https://api.github.com/repos/ArchivalEra/isui.ren-heart/actions/workflows \
-            | python3 -c "import json,sys; print(next(w['id'] for w in json.load(sys.stdin)['workflows'] if w['name']=='deploy'))")
-          echo "heart deploy workflow id = $WF"
-          # dispatch：同样必须 -f。202 是成功（不是 200），所以判 2xx 而不是 200。
-          CODE=$(curl -sSf -o /dev/null -w "%{http_code}" -X POST \
-            -H "Authorization: token $TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/ArchivalEra/isui.ren-heart/actions/workflows/$WF/dispatches" \
-            -d '{"ref":"main"}') || {
-              echo "::error::dispatch 失败（HTTP ${CODE:-?}）——检查 HEART_DISPATCH_TOKEN 是否有该仓 Actions:write"
-              exit 1
-            }
-          echo "dispatch HTTP $CODE（202 为成功）"
-          echo "EDGEONE_DISPATCHED=yes" >> "$GITHUB_ENV"
-
       # ── 线上验收（本次事故的补丁，2026-11-01）──
-      # 前面每一步都可能"绿"而线上仍是旧产物：CDN 缓存、外部托管方没重新
-      # 构建（EO 由 shirone 的 CI 从我的 deploy 分支取，需先 dispatch）、
-      # Pages 传播延迟。判据锚在**产物本身**（构建指纹 + verified_at），
+      # 前面每一步都可能"绿"而线上仍是旧产物：CDN 缓存、托管方没重新拉取、
+      # 传播延迟。判据锚在**产物本身**（构建指纹 + verified_at），
       # 不是通道之间是否一致 —— 全都停在旧产物时，一致性照样成立。
-      # 时序：dispatch 后 shirone 要 clone + 构建 + 推 deploy + EO 拉取，
-      # 实测约 2-4 分钟，故 dispatch 过时给足 10 轮 × 30s；未 dispatch
-      # （缺 token）时只给 6 轮 × 20s —— 那种情况下 EO 注定不会跟，闸门红
-      # 是**如实报告**，不是误报。
+      # 时序：两条站点线的边缘缓存都是 `cache-control: max-age=300`
+      # （实测 EO 与 CF 各 300s）。站点路径若命中旧缓存，更新要等缓存过期
+      # ⇒ 轮次必须覆盖 300s 以上，否则闸门会把「还没过期」报成「没吃到」。
       # ★ 在线死链探测：**内容指纹**，不是状态码。
-      # EdgeOne 对不存在路径返回 200 + 兜底页（实测 611B），只看状态码会全绿。
+      # 边缘对不存在路径可能返回 200 + 兜底页（旧的 isui.ren/static 就是
+      # 200 + 611B 落地页），只看状态码会全绿。
       # 放在线上验收之后 —— 那时三个通道都已吃到本次产物。
       - name: 在线死链探测（本镜像源逐链接，指纹判定）
         env:
@@ -158,12 +117,10 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/verify-channels.py --selftest
-          if [ "${EDGEONE_DISPATCHED:-skipped}" = "yes" ]; then
-            AT=10; WAIT=30
-          else
-            AT=6; WAIT=20
-          fi
+          # 轮次必须覆盖边缘缓存 TTL（两条线都是 max-age=300）：
+          # 12 轮 × 30s = 360s > 300s。给少了，闸门会把「缓存还没过期」
+          # 报成「通道没吃到产物」——那是误报，会让人去查并不存在的问题。
           python3 scripts/verify-channels.py \
             --expected site/dist \
             --channels site/channels.json \
-            --attempts "$AT" --wait "$WAIT"
+            --attempts 12 --wait 30

@@ -45,8 +45,12 @@ def classify(name, h):
         return "FAIL", "no CF edge fingerprint (server=%r)" % low.get("server")
     if name == "eo":
         # EO exposes two header families; I got this wrong once:
-        #   static site isui.ren/static -> Server: edgeone makers / X-NWS-LOG-UUID
-        #   fetch host static.isui.ren -> eo-log-uuid / eo-cache-status / nel -> eo-nel
+        #   the old apex site line isui.ren/static -> Server: edgeone makers /
+        #     X-NWS-LOG-UUID (that layer was removed on 2026-11-04)
+        #   the current host static.isui.ren -> eo-log-uuid / eo-cache-status /
+        #     nel -> eo-nel. It serves the site tree AND the release bytes
+        #     (the rule engine splits by path), so both kinds of response
+        #     carry the same eo-* headers.
         #   The latter coexists with upstream Azure/Fastly headers, so judging by
         #   `server` alone reports a false negative.
         eo = [k for k in low if k.startswith(("x-eo", "x-nws", "eo-"))]
