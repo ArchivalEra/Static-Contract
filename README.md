@@ -144,6 +144,15 @@ well (that is exactly how I misjudged it once on 2026-11-01).
 > branch push *is* the update. The old dispatch step (and `HEART_DISPATCH_TOKEN`) is gone; it
 > rebuilt isui.ren's own `/heart/` application, which is not this site.
 > The original single `deploy` branch was **deleted** on 2026-11-04 once both mirrors had switched.
+>
+> **Never push to `deploy-eo` or `deploy-cf` by hand.** They are pipeline *outputs*: a force-push
+> from a terminal replaces the entire tree, and the live site follows the branch immediately. On
+> 2026-11-04 I broke the live site exactly that way — a latency probe force-pushed as a commit
+> containing one file, so the whole site tree became that file and every path went to `404`.
+> The repair is to change `main` and let the pipeline rebuild the branch, not to push a
+> "restore" commit: the branch is regenerated, never patched. Full account in `docs/incidents.md`.
+> If you need to measure edge behaviour, measure it through `main` — never by writing into the
+> artifact.
 
 CI: the `gates` workflow runs the same criteria as the local hooks (fact-block reconciliation + the
 full gate roster + module self-tests); the environment explicitly installs `zstandard` (the
