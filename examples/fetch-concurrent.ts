@@ -3,7 +3,8 @@
  *
  * Runs in a browser and in any runtime with `fetch`, `crypto.subtle` and
  * `DecompressionStream` (gzip). zstd needs `fzstd` — 6.8 KB, which is exactly what
- * canon §4 names for the zstd branch.
+ * canon §4 names for the zstd branch. fzstd is MIT-licensed (Arjun Barrett);
+ * see NOTICE in the repository root for the full attribution and license text.
  *
  * Two properties this client exists to demonstrate:
  *

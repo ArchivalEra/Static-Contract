@@ -11,8 +11,9 @@ tooling — same algorithm, same checks, different runtime.
 ## `fetch-concurrent.ts` — the browser client
 
 TypeScript, strict, no dependencies except `fzstd` (6.8 KB — canon §4 names it for the
-zstd branch). Uses only browser primitives: `fetch`, `crypto.subtle.digest`,
-`DecompressionStream("gzip")`, `AbortSignal`.
+zstd branch). fzstd is MIT-licensed, by Arjun Barrett. See `NOTICE` in the repository
+root for the full attribution and license text. Uses only browser primitives: `fetch`,
+`crypto.subtle.digest`, `DecompressionStream("gzip")`, `AbortSignal`.
 
 ```ts
 import { fetchRelease, rootsFor } from "./fetch-concurrent";

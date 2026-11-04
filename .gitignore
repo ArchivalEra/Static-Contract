@@ -5,6 +5,7 @@
 # ===== 白名单（只有这些会被跟踪）=====
 !.gitignore
 !LICENSE
+!NOTICE
 !README.md
 !STATE.md
 !maintaince.md
