@@ -215,10 +215,51 @@ healthy mirror dead.
 caller's signal; without releasing it, a long-lived app-level signal accumulates
 one listener and one retained handle per release opened.
 
+## Choosing your own codec chain
+
+The contract does not fix which branch a release is fetched from. Canon V9 calls
+`codecs[]` an **open vocabulary** — a producer may offer any number of codecs, in
+any order, and `identity` need not exist. The manifest's order is a suggestion;
+the choice belongs to the consumer.
+
+```ts
+// Highest priority first. Falls through to the manifest's order for anything
+// this list does not cover.
+const release = await openRelease(ref, {
+  codecPreference: ["identity", "xz", "gzip"],
+});
+```
+
+Three properties make this a preference rather than a requirement:
+
+- **The chain wins when it can.** `["gzip"]` against a release declaring
+  `["zstd","gzip","identity"]` fetches gzip, not zstd.
+- **It falls back when it cannot.** `["br","xz"]` against that same release still
+  succeeds, using the manifest's first decodable codec. Asking for a codec the
+  release does not ship is not an error.
+- **Undecodable names are skipped.** A chain naming `xz` when no decoder is
+  registered moves past it instead of failing.
+
+Names are arbitrary strings, so `["identity", "avi", "iso"]` is a legal chain — it
+just falls through to whatever the release actually offers.
+
+**This is a cost decision, not a correctness one.** Measured on the reference
+mirror, the same two releases:
+
+| codec chain | wire bytes | wall clock |
+|---|---|---|
+| default (manifest order → `zstd`) | **22.12 MiB** | ~30 s |
+| `["identity", "gzip"]` | **109.26 MiB** | 180.8 s |
+
+Identical payload after decoding — 109.23 MiB both ways — but 4.9x the transfer
+and 6x the time, because `identity` sends the raw bytes. A consumer on a fast
+local link may prefer that (no decompression cost); a consumer on a metered or
+slow link will not. The contract deliberately leaves that call to the client.
+
 ## `test/` — offline tests
 
 ```bash
-cd examples && npm install && npm test        # 23 cases, ~0.5 s, no network
+cd examples && npm install && npm test        # 31 cases, ~0.5 s, no network
 ```
 
 Every case goes through the **public interface** — `openRelease`, `read`,
@@ -242,6 +283,8 @@ this client. They are named in the file and each has a dedicated case:
 | A stall classified as final | One stalled request burns the whole budget and reports a failure a retry would have fixed | `an attempt budget aborts a stalled response and retries` |
 | A 404 demoting a healthy mirror | One missing file pushes every later request to the fallback | `a 404 does not demote the mirror for other entries` |
 | `manifest-unreachable` unreachable | Errors passed through unchanged, so the code could never surface | `manifest-unreachable is actually reachable` |
+
+A second group covers the **codec chain**: the consumer's order wins over the manifest's, an absent or undecodable preference falls through instead of failing, duplicates are harmless, and the no-chain default still follows canon §3.3.
 
 **These tests were verified by mutation, not by passing.** Breaking the client in
 five separate ways — skipping decode, treating every failure as final, ignoring

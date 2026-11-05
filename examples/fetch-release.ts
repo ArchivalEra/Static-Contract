@@ -64,6 +64,26 @@ const TARGETS: { id: string; product: string }[] = [
 const BURST = 1;
 
 /**
+ * The client's own codec chain, highest priority first.
+ *
+ * The contract does **not** fix the order — canon V9 calls `codecs[]` an open
+ * vocabulary, so which branch to fetch is the consumer's decision. The manifest's
+ * order is the producer's suggestion. This list overrides it and falls back to it
+ * for anything it does not cover, which is what makes it a preference rather than
+ * a requirement.
+ *
+ * Left `undefined` so the default run follows the manifest's order. Set it and
+ * the numbers move visibly — measured on the reference mirror, the same releases
+ * with `["identity", "gzip"]` forced transfer **109.26 MiB** in 180.8 s where the
+ * default zstd path moves **22.12 MiB** in ~30 s. Same payload, same bytes after
+ * decoding; only the branch differs. That is the whole point of letting the
+ * consumer choose: `codecPreference` is a cost decision, not a correctness one.
+ *
+ * Try it: set this to `["identity", "gzip"]` and compare the wire MiB figure.
+ */
+const CODEC_PREFERENCE: string[] | undefined = undefined;
+
+/**
  * Where to read the catalogue from.
  *
  * `SC_CATALOGUE` overrides it. This host is the reference mirror of the cluster
@@ -124,7 +144,7 @@ async function main(): Promise<void> {
     const started = Date.now();
 
     // Both roots passed through untouched: no forcing, no extra options.
-    const release = await openRelease(ref);
+    const release = await openRelease(ref, { codecPreference: CODEC_PREFERENCE });
     const wanted: EntryInfo[] = release.entries.filter((e) => e.product === target.product);
     if (wanted.length === 0) {
       throw new Error(`${target.id} has no entries for product ${target.product}`);
@@ -132,10 +152,10 @@ async function main(): Promise<void> {
 
     // Every entry must be zstd — that is the codec this run is about. If the
     // client silently fell back to gzip the numbers would not be comparable.
+    // The codecs actually chosen, not an assertion on a fixed one: with a
+    // preference chain the branch is the consumer's decision, and this run exists
+    // to show which one won. Mixed codecs across entries are legal too.
     const codecs = [...new Set(wanted.map((e) => e.codec))];
-    if (codecs.length !== 1 || codecs[0] !== "zstd") {
-      throw new Error(`expected zstd only, got ${codecs.join(",")}`);
-    }
 
     const declared = wanted.reduce((n, e) => n + e.bytes, 0);
 
@@ -157,6 +177,7 @@ async function main(): Promise<void> {
     const mib = (n: number) => (n / 1048576).toFixed(2);
     console.log(
       `${target.id} [${target.product}]  ` +
+        `codec=${codecs.join("+")}  ` +
         `${wanted.length} entries, ${requests} requests  ` +
         `wire ${mib(wire)} MiB → decoded ${mib(declared)} MiB ` +
         `(${(declared / wire).toFixed(1)}x)  ` +

@@ -157,6 +157,29 @@ export interface OpenOptions {
   attemptBudgetMs?: number;
   /** Called after each entry resolves, for UI progress on large releases. */
   onEntry?: (info: EntryInfo, done: number, total: number) => void;
+  /**
+   * This client's preferred codec chain, highest priority first.
+   *
+   * Canon V9 makes `codecs[]` an **open vocabulary**: a release may offer any
+   * number of codecs, in any order, and `identity` need not exist at all. The
+   * manifest's order is a *producer's* suggestion, not a rule — which branch to
+   * fetch belongs to the consumer.
+   *
+   * So this list is the consumer speaking. It is tried first, verbatim and in
+   * order; whatever it does not cover falls through to the manifest's declared
+   * order. That is what makes it a preference rather than a requirement: asking
+   * for `["br", "zstd"]` from a release that ships only `["identity", "gzip"]`
+   * still succeeds, and asking for `["identity"]` against a release that ships
+   * everything will use `identity` and nothing else.
+   *
+   * Names are arbitrary strings — `["identity", "xz", "gzip"]` is as valid as
+   * `["zstd"]`. A preferred codec that is absent or undecodable is not an error;
+   * the chain moves on. Only an entry with **no** decodable variant at all fails,
+   * and the message then lists what was offered.
+   *
+   * Default: the manifest's own order (canon §3.3's "in codecs order").
+   */
+  codecPreference?: string[];
 }
 
 export type ContractErrorCode =
@@ -419,7 +442,7 @@ export async function openRelease(
     });
   }
 
-  const plan = validate(manifest, ref.id);
+  const plan = validate(manifest, ref.id, options.codecPreference);
 
   const read = async (entry: EntryInfo): Promise<Bytes> => {
     const planned = plan.get(entry.key);
@@ -475,7 +498,7 @@ export async function openRelease(
  * nothing — a manifest that half-passes is not used, because acting on the
  * valid subset would mean silently dropping entries the producer published.
  */
-function validate(m: RawManifest, id: string): Map<string, Planned> {
+function validate(m: RawManifest, id: string, preference?: string[]): Map<string, Planned> {
   if (typeof m.schema !== "number" || !SUPPORTED_SCHEMAS.has(m.schema)) {
     throw new ContractError(
       "schema-unsupported",
@@ -498,7 +521,7 @@ function validate(m: RawManifest, id: string): Map<string, Planned> {
     if (plan.has(key)) {
       throw new ContractError("manifest-invalid", `release ${id}: duplicate entry ${key}`);
     }
-    const variant = pickVariant(e, declared, id);
+    const variant = pickVariant(e, declared, preference, id);
     const own = e.license === undefined ? undefined : checkLicense(e.license, `${id} ${key}`);
     plan.set(key, {
       variant,
@@ -547,13 +570,29 @@ function checkLicense(value: unknown, where: string): LicenseRef | null {
 }
 
 /**
- * First variant this runtime can decode, in the manifest's declared order.
+ * First variant this runtime can decode.
  *
- * Canon §3.3: "for each entry, in codecs order pick the first decodable branch".
+ * Two orders are consulted, in sequence:
+ *
+ *  1. the **consumer's** chain (`OpenOptions.codecPreference`), if given;
+ *  2. the **manifest's** declared order, which is canon §3.3's default
+ *     ("for each entry, in codecs order pick the first decodable branch").
+ *
+ * Trying the consumer's chain first is what makes codec choice a client decision
+ * rather than a producer's. Falling back to the manifest order is what keeps it a
+ * *preference*: a consumer that wants `br` still gets served by a release that
+ * only offers gzip, instead of failing because its first choice was absent.
+ *
  * An unknown codec is skipped, never fatal — V9 makes the vocabulary open, so a
- * producer adding one must not break clients that predate it.
+ * producer adding one must not break clients that predate it, and a consumer
+ * asking for one it cannot decode must not break on releases that lack it.
  */
-function pickVariant(e: RawEntry, declared: string[], id: string): RawVariant {
+function pickVariant(
+  e: RawEntry,
+  declared: string[],
+  preference: string[] | undefined,
+  id: string,
+): RawVariant {
   const available = Array.isArray(e.variants) ? e.variants : [];
 
   // V5, second half: "all codecs of one entry must have the same chunk count
@@ -572,7 +611,10 @@ function pickVariant(e: RawEntry, declared: string[], id: string): RawVariant {
     );
   }
 
-  for (const codec of declared) {
+  // Consumer's chain first, then the manifest's — de-duplicated so a codec named
+  // in both is not probed twice.
+  const order = [...new Set([...(preference ?? []), ...declared])];
+  for (const codec of order) {
     if (!canDecode(codec)) continue;
     const v = available.find((candidate) => candidate.codec === codec);
     if (v) return checkChunks(v, `${e.product}/${e.name}`, id);

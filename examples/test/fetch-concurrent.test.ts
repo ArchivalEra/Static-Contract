@@ -473,6 +473,106 @@ describe("cancellation and lifecycle", () => {
   });
 });
 
+describe("codec preference chain", () => {
+  // Canon V9: `codecs[]` is an open vocabulary, so which branch to fetch is the
+  // consumer's decision. These cases pin that behaviour from both directions —
+  // the chain must win when it can, and must fall back when it cannot.
+  const allThree = () => buildRelease({ size: 20_000, chunkSize: 8_000, codecs: ["zstd", "gzip", "identity"] });
+
+  test("the chain overrides the manifest's order", async () => {
+    const fx = allThree();
+    const fake = installFake(fx.manifest, fx.files);
+    restore = fake.restore;
+
+    // Manifest order is zstd,gzip,identity. Ask for gzip first.
+    const rel = await openRelease(REF, { codecPreference: ["gzip"] });
+    assert.equal(rel.entries[0].codec, "gzip");
+    const bytes = await rel.read(rel.entries[0]);
+    assert.deepEqual(bytes, payload(20_000));
+    rel.close();
+  });
+
+  test("the chain can pick identity and nothing else", async () => {
+    const fx = allThree();
+    const fake = installFake(fx.manifest, fx.files);
+    restore = fake.restore;
+
+    const rel = await openRelease(REF, { codecPreference: ["identity"] });
+    assert.equal(rel.entries[0].codec, "identity");
+    assert.deepEqual(await rel.read(rel.entries[0]), payload(20_000));
+    rel.close();
+  });
+
+  test("an absent preferred codec falls back to the manifest order", async () => {
+    // `br` is a legal name in the vocabulary but this release does not ship it.
+    // A preference must not turn into a hard requirement.
+    const fx = allThree();
+    const fake = installFake(fx.manifest, fx.files);
+    restore = fake.restore;
+
+    const rel = await openRelease(REF, { codecPreference: ["br", "xz"] });
+    assert.equal(rel.entries[0].codec, "zstd", "fell back to the manifest's first entry");
+    assert.deepEqual(await rel.read(rel.entries[0]), payload(20_000));
+    rel.close();
+  });
+
+  test("an undecodable preferred codec is skipped, not fatal", async () => {
+    // `xz` is in the release but this runtime has no decoder for it. The chain
+    // must move past it to something it can decode.
+    const fx = buildRelease({ size: 9000, chunkSize: 4000, codecs: ["xz", "gzip"] });
+    const fake = installFake(fx.manifest, fx.files);
+    restore = fake.restore;
+
+    const rel = await openRelease(REF, { codecPreference: ["xz"] });
+    assert.equal(rel.entries[0].codec, "gzip", "skipped the undecodable preference");
+    assert.deepEqual(await rel.read(rel.entries[0]), payload(9000));
+    rel.close();
+  });
+
+  test("a preference beats the manifest even when the manifest lists it later", async () => {
+    // Order matters: manifest says identity first, consumer says gzip.
+    const fx = buildRelease({ size: 9000, chunkSize: 4000, codecs: ["identity", "gzip"] });
+    const fake = installFake(fx.manifest, fx.files);
+    restore = fake.restore;
+
+    const rel = await openRelease(REF, { codecPreference: ["gzip"] });
+    assert.equal(rel.entries[0].codec, "gzip");
+    rel.close();
+  });
+
+  test("a chain naming codecs the release lacks entirely still serves it", async () => {
+    // The exotic case: identity-xz-gzip style chains against a zstd-only release.
+    const fx = buildRelease({ size: 6000, chunkSize: 3000, codecs: ["zstd"] });
+    const fake = installFake(fx.manifest, fx.files);
+    restore = fake.restore;
+
+    const rel = await openRelease(REF, { codecPreference: ["identity", "xz", "gzip"] });
+    assert.equal(rel.entries[0].codec, "zstd", "last resort is the manifest");
+    assert.deepEqual(await rel.read(rel.entries[0]), payload(6000));
+    rel.close();
+  });
+
+  test("duplicates in the chain do not change behaviour", async () => {
+    const fx = allThree();
+    const fake = installFake(fx.manifest, fx.files);
+    restore = fake.restore;
+
+    const rel = await openRelease(REF, { codecPreference: ["gzip", "gzip", "zstd", "gzip"] });
+    assert.equal(rel.entries[0].codec, "gzip");
+    rel.close();
+  });
+
+  test("with no chain the manifest order governs (canon §3.3 default)", async () => {
+    const fx = buildRelease({ size: 9000, chunkSize: 4000, codecs: ["identity", "gzip"] });
+    const fake = installFake(fx.manifest, fx.files);
+    restore = fake.restore;
+
+    const rel = await openRelease(REF);
+    assert.equal(rel.entries[0].codec, "identity", "first declared codec wins by default");
+    rel.close();
+  });
+});
+
 describe("codec registry", () => {
   test("a codec can be unregistered, restoring the platform view", async () => {
     const fx = buildRelease({ size: 4000, chunkSize: 2000, codecs: ["zstd"] });
