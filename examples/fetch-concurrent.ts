@@ -136,9 +136,17 @@ export interface OpenOptions {
   /**
    * Parallel chunk fetches per entry. Default 2.
    *
-   * The default was measured against one mirror on one link; it is not a
-   * property of the protocol. `chunks` are independent by construction (canon
-   * V5), so raising this is always legal — whether it helps depends on the link.
+   * **2 is not arbitrary and not a property of this protocol.** The reference
+   * mirror throttles once a client pulls roughly 10–15 MiB concurrently. With
+   * `chunkSize` at 5 MiB, three in flight is 15 MiB — across the line — while two
+   * is 10 MiB, which is the margin the chunk size was chosen to leave. So the
+   * safe ceiling for a 5 MiB chunk size is two, and that is where the default
+   * comes from.
+   *
+   * Raising this is legal (`chunks` are independent by construction, canon V5)
+   * but on a mirror with a byte cap it makes things slower, not faster: the
+   * throttle applies to the whole transfer. If a producer ships a smaller
+   * `chunkSize`, more parallelism fits under the same cap and this can go up.
    */
   concurrency?: number;
   /** Attempts per root before moving to the next root. Default 3. */
@@ -337,7 +345,14 @@ const DEFAULT_ATTEMPT_BUDGET_MS = 5_000;
 const ASSUMED_BYTES_PER_SECOND = 512 * 1024;
 const BUDGET_HEADROOM = 2;
 
-/** Parallel chunk fetches per entry. Overridable; see `OpenOptions.concurrency`. */
+/**
+ * Parallel chunk fetches per entry. Overridable; see `OpenOptions.concurrency`.
+ *
+ * Two, because the reference mirror throttles above ~10–15 MiB of concurrent
+ * transfer and `chunkSize` is 5 MiB: 2 x 5 = 10 stays under, 3 x 5 = 15 does not.
+ * Tied to the chunk size, not to the protocol — a release with 1 MiB chunks could
+ * safely run more.
+ */
 const DEFAULT_CONCURRENCY = 2;
 
 // ── internal shapes ───────────────────────────────────────────────────────────

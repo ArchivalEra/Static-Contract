@@ -69,8 +69,16 @@ fails, and the message names what was offered and what is missing.
 
 ### What it demonstrates
 
-**Concurrency.** Chunks are independent by construction (V5 requires every chunk to
-decode on its own), so they are fetched in parallel and reordered by `part`.
+**Concurrency, with a ceiling that is not the protocol's.** Chunks are independent
+by construction (V5 requires every chunk to decode on its own), so they are
+fetched in parallel and reordered by `part`.
+
+The default is **2**, and the reason is the mirror, not the contract: the
+reference mirror throttles once roughly 10–15 MiB are in flight at once. With
+`chunkSize` at 5 MiB, two chunks is 10 MiB — under the line — and three is 15 MiB,
+over it. The chunk size is chosen with that margin in mind, so the concurrency
+default follows from it. Raise `concurrency` only with a smaller `chunkSize`, or
+against a mirror without a byte cap.
 
 **Cross-source continuation.** Every chunk may come from any root serving the same
 manifest: `base` (cluster mirror) or `base_proxy` (GitHub). The chunk `sha256` is
