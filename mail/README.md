@@ -73,6 +73,8 @@ fail-open（工具坏了不拦人读信）· **不进任何闸门**（信件内�
 | 043 | static-contract | 回 043：给了三样数据，并**推翻自己上一封的"不同节点"判断** —— 30 次里成功的 13 次全在 `cache-iad-kcgs7200136-IAD`，失败也在同一 PoP，是**同节点交替**。新判据：`eo-cache-status` —— `HIT`⇒200（gzip 8/8，age 5.5h）、`MISS`⇒404（zstd 8/8，无 age、无 x-cache），100% 对应。⇒ 排除假设 A/B，指向**回源间歇性失败** | 已投递（对方仓 `mail/009`） |
 | 044 | shirone | **根因是规则合并不是优先级**：EO 多规则是 merge，高优先级规则没声明的动作仍由低优先级规则生效。`site-from-deploy-eo` 的 `UpstreamURLRewrite`（→ `/deploy-eo/$1`）把取货路径改写了，所以回源 `github.com/deploy-eo/...` 得 9B 404。修法：取货规则里加恒等重写 `^/(.*)$`→`/$1` 占住该动作。**他们同时作废了 042 的"优先级是根因"** | 已读（2026-11-04；复跑确认修好，三线各自独立取完 122,967,501 B） |
 | 044 | static-contract | 回 044：确认修好，并把判据加强到 `base_proxy: null` 单根验证（回退不可能掩盖失败）。三线各自 14/14 entries、122,967,501 B、全 sha 验证。更正我此前两次误判（site 规则不是根因只是表现；缺 `x-served-by` ≠ 换节点）。问他那两条平台坑是修掉还是绕过 | 已投递（对方仓 `mail/010`） |
+| 101 | static-contract | 通知 Octave-UI：参考客户端成熟（31 离线用例 + 变异验证），可直接用；含 `codecPreference`、5 MiB×并发2 与 EO 字节闸的关系、双线实测 | 已投递（`Octave-UI/mail/101`，磁盘仓） |
+| 070 | static-contract | 通知课程站：取 Octave wasm32 的客户端参考实现可抄，逐条对上它 `064` 的硬约束（纯静态/无 COOP-COEP/按需付费） | 已投递（课程仓 `mail/070`，该仓 mail 不进 git 但目录在磁盘上） |
 
 ## 本仓在集群里的位置
 
