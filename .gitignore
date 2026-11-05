@@ -41,6 +41,12 @@
 !/examples/*.py
 !/examples/*.ts
 !/examples/*.md
+!/examples/*.json
+# 离线测试（跑测试要 node_modules，那是本地产物，不进库）
+!/examples/test/
+!/examples/test/*.ts
+/examples/node_modules/
+/examples/package-lock.json
 
 # ===== 部署自动更新链（2026-11-01）=====
 !/.github/

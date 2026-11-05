@@ -215,7 +215,50 @@ healthy mirror dead.
 caller's signal; without releasing it, a long-lived app-level signal accumulates
 one listener and one retained handle per release opened.
 
+## `test/` — offline tests
+
+```bash
+cd examples && npm install && npm test        # 23 cases, ~0.5 s, no network
+```
+
+Every case goes through the **public interface** — `openRelease`, `read`,
+`readAll`, `close`, `useDecoder` — with a fake `fetch` on `globalThis`. The client
+exposes no test hooks and none were added for these tests: if a case needed
+internals, it would be measuring the wrong layer. The only seam is the global
+`fetch`, which the client reads at call time.
+
+`test/fixtures.ts` builds real releases: it compresses real bytes with Node's
+`zlib` (zstd and gzip), slices them into real chunks, names them per canon V1, and
+hashes them. Nothing is mocked at the data level — a passing test means the client
+decoded actual compressed bytes.
+
+The suite exists to catch five traps that were each hit for real while building
+this client. They are named in the file and each has a dedicated case:
+
+| Trap | What goes wrong | Covered by |
+|---|---|---|
+| Decoding the concatenation | Multi-chunk payload silently truncates to its first frame; every chunk hash stays green | `multi-chunk zstd decodes each chunk separately` |
+| A hole check that skips holes | `some(p => p === undefined)` never fires on `new Array(n)`, so the gap check is dead code | `readAll` / multi-chunk cases |
+| A stall classified as final | One stalled request burns the whole budget and reports a failure a retry would have fixed | `an attempt budget aborts a stalled response and retries` |
+| A 404 demoting a healthy mirror | One missing file pushes every later request to the fallback | `a 404 does not demote the mirror for other entries` |
+| `manifest-unreachable` unreachable | Errors passed through unchanged, so the code could never surface | `manifest-unreachable is actually reachable` |
+
+**These tests were verified by mutation, not by passing.** Breaking the client in
+five separate ways — skipping decode, treating every failure as final, ignoring
+the ledger distinction, dropping the asset-name whitelist, letting `close()` not
+stop later reads — turns the suite red in each case (1, 2, 8, 1 and 1 failures
+respectively). A test that cannot fail is not evidence, so this was checked
+rather than assumed. One of the five cases was originally written badly enough
+that it did *not* catch its mutation; it was rewritten with a real asymmetry
+between the two roots, which is the only shape where a demoted mirror is
+observable.
+
+CI runs `tsc --noEmit` and the suite on every push, so the examples cannot rot
+silently.
+
 ## `verify-three-lines.py` — whose edge did the bytes cross?
+
+
 
 All three roots fetch fine; the question is whether the bytes actually transited the
 platform each URL claims to use.

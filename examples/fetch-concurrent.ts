@@ -661,7 +661,13 @@ async function fetchEntry(
   // result nobody will use.
   const scope = new AbortController();
   const relay = () => scope.abort();
-  session.addEventListener("abort", relay, { once: true });
+  // `addEventListener` does not replay a past abort, so a handle closed before
+  // `read()` was called would otherwise run to completion against a dead session.
+  // Checking `session.aborted` covers that case; the listener covers abort-while-
+  // reading. `close()` is documented as stopping later reads, and this is the
+  // line that makes it true.
+  if (session.aborted) scope.abort();
+  else session.addEventListener("abort", relay, { once: true });
 
   const decoded = new Array<Bytes>(chunks.length);
   let next = 0;

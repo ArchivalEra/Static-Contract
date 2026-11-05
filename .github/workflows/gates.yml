@@ -47,3 +47,22 @@ jobs:
           for m in $(python3 zreflect/registry.py --selftest-modules); do
             echo "--- $m"; python3 "$m" --selftest || exit 1
           done
+      # 参考客户端是发给下游抄的代码，它自己没有任何测试的话就会静默腐烂。
+      # 这一步只跑 examples/ 自己的离线测试（fake fetch，不联网），与契约闸门无关，
+      # 所以放在最后：它红了说明示例坏了，不说明契约坏了。
+      # 26: the fixtures compress real bytes with `zlib.zstdCompressSync`, which
+      # only exists from Node 22.15. Pinning an older minor risks resolving a
+      # runtime where it is undefined and every zstd fixture fails for the wrong
+      # reason. `check-latest` so the runner image's cached build does not lag the
+      # security release line — same lesson as the Python step above.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26"
+          check-latest: true
+      - name: 参考客户端离线测试（examples/）
+        working-directory: examples
+        run: |
+          set -euo pipefail
+          npm install --no-save --silent tsx typescript @types/node
+          npx tsc --noEmit -p tsconfig.json
+          npx tsx --test test/*.test.ts
