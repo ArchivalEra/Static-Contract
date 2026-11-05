@@ -5,8 +5,7 @@
   "description": "Reference client and its tests. The client itself has no runtime dependencies; everything here is for running the examples and tests.",
   "scripts": {
     "test": "tsx --test test/*.test.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
-    "bench": "tsx fetch-release.ts"
+    "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {
     "tsx": "^4.19.0",

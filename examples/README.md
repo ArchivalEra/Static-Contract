@@ -5,9 +5,6 @@ Three files, all run against the live catalogue; none is a sketch.
 - **`fetch-concurrent.ts`** — the reference client. Both consumers of this contract
   (Octave-UI's package manager and in-site downloads) run in a browser, so the
   reference implementation is TypeScript.
-- **`fetch-release.ts`** — live end-to-end run plus the wasm32 zstd benchmark. Fetches
-  real releases with both roots configured (no forcing) and reports wire bytes,
-  decoded bytes, throughput and which host served each request.
 - **`verify-three-lines.py`** — acceptance for a different question: not "does it
   fetch" but "whose edge did the bytes cross".
 
@@ -122,99 +119,6 @@ Edge cases exercised against the live service:
 | arbitrary codec name | accepted by `useDecoder` (open vocabulary) |
 | `useDecoder("identity", …)` | refused |
 
-## `fetch-release.ts` — live run and wasm32 zstd benchmark
-
-```bash
-npx tsx examples/fetch-release.ts
-```
-
-Fetches `Octave-Full-Wasm/v0.1.0` (product `wasm32`) and
-`OpenModelica-Full-Wasm/v0.2.0-wasm32` (product `omc`) from the live catalogue,
-with **both `base` and `base_proxy` configured and neither forced**. Every entry's
-sha256 is checked against the manifest before its bytes are counted.
-
-It reports two throughput numbers because they answer different questions:
-
-- **wire** — zstd-encoded bytes, what the link actually carried;
-- **decoded** — post-decompression bytes, what the manifest calls `entry.bytes`.
-
-zstd compresses these releases **4.9–5.1×**, so quoting only the decoded figure
-understates the link fivefold. Both are printed, along with the ratio and a
-per-host request tally.
-
-Measured 2026-11-05 on this host (five consecutive runs, all successful):
-
-```
-Octave-Full-Wasm/v0.1.0 [wasm32]            3 entries, ~11 requests  wire  7.44 MiB -> decoded 37.95 MiB (5.1x)
-OpenModelica-Full-Wasm/v0.2.0-wasm32 [omc]  4 entries, ~19 requests  wire 14.67 MiB -> decoded 71.27 MiB (4.9x)
-TOTAL 29-35 requests, wire 22.12 MiB -> decoded 109.23 MiB
-wall clock 5.2s / 30.9s / 33.4s / 34.6s / 49.0s   (median ~33s, best 4.22 MiB/s wire)
-requests per host: {"static.isui.ren":~30}
-```
-
-**Every request landed on the mirror.** The fallback was configured and never
-needed — which is the designed behaviour (canon v1.1 §5.3), not a sign that
-`base_proxy` is dead weight.
-
-### The retry policy, and why it matters more than throughput
-
-The mirror intermittently accepts a request and then never delivers it. Measured
-directly: the same 5 MiB chunk, six tries — two timed out past 40 s, four
-succeeded in 0.39–1.99 s. Success is fast when it comes; failure is not a slow
-transfer but a request that stops answering.
-
-That shape makes a long deadline the wrong tool. The policy is therefore
-**per-root: 3 tries of 5 s each by default**,
-`base` first, and only when those are exhausted does `base_proxy` get its own
-three. A dead request costs 15 s per root instead of 120 s, and a stall gets
-retried rather than reported.
-
-The difference is not marginal: before this policy, full runs succeeded about
-1 in 3. After it, **5 out of 5**, with wall clock from 5.2 s to 49 s depending on
-how many retries the window needed.
-
-A status is treated differently from a stall. `ContractError.status` is set when
-a root actually answered, and a 404 will still be a 404 on the next try — so a
-status skips the rest of that root's budget and moves straight to the next root,
-rather than burning three attempts on an unreachable file.
-
-### Concurrency
-
-`read()` parallelises chunk fetches within an entry (2 by default). `BURST`
-adds parallelism across entries; the default is 1 because two connections
-already saturate this link. An earlier note here claimed "P=3 collapses to
-0.16 MiB/s" — that was sampling noise from stalled chunks, not a connection cap,
-and is corrected: the mirror did not show a concurrency limit once stalls were
-controlled for.
-
-### What is configurable
-
-The three link-dependent values are defaults, not protocol facts, and are all
-overridable through `OpenOptions`:
-
-```ts
-const release = await openRelease(ref, {
-  concurrency: 4,          // parallel chunk fetches per entry
-  attemptsPerRoot: 3,      // tries per root before falling through
-  attemptBudgetMs: 20000,  // explicit budget; omit to derive from chunk size
-  onEntry: (info, done, total) => setProgress(done, total),
-  signal: abort.signal,
-});
-// ...
-release.close();           // aborts in-flight work and detaches the listener
-```
-
-`attemptBudgetMs` is derived per request when omitted: a chunk's declared encoded
-size is divided by an assumed 0.5 MiB/s and given 2x headroom, never below the
-5 s default. That matters because a flat budget encodes one link's speed into
-every consumer — a 865 KB zstd chunk needs ~1.5 s, a 5 MiB identity chunk needs
-8–9 s on the same link, and a flat 5 s would abort the second one and mark a
-healthy mirror dead.
-
-`close()` exists because `openRelease` registers an abort listener on the
-caller's signal; without releasing it, a long-lived app-level signal accumulates
-one listener and one retained handle per release opened.
-
 ## Choosing your own codec chain
 
 The contract does not fix which branch a release is fetched from. Canon V9 calls
@@ -326,7 +230,66 @@ SC_HTTP_PROXY=http://127.0.0.1:2080 python3 verify-three-lines.py \
 
 Exit code is non-zero if any line does not show its own edge.
 
-## Measured results (2026-11-04)
+## Measuring it yourself
+
+There is no benchmark script. `fetch-concurrent.ts` is the client, so a
+measurement is just the client plus a stopwatch — anything that wraps `fetch`
+would be measuring the wrapper, not the path a consumer takes.
+
+**Wall clock.** Time the read loop:
+
+```ts
+const t0 = Date.now();
+const rel = await openRelease(ref);            // both roots configured, unforced
+for await (const { info, bytes } of rel.readAll()) { /* consume */ }
+console.log(`${((Date.now() - t0) / 1000).toFixed(1)}s`);   // read() resolves only after the sha checks
+rel.close();
+```
+
+**Wire bytes.** Don't count them — read them off the manifest. Every chunk
+declares its encoded size, so the transfer for a release under a given codec is a
+sum, not a measurement:
+
+```ts
+const wire = entry.variants
+  .find((v) => v.codec === codec)!
+  .chunks.reduce((n, c) => n + c.bytes, 0);
+```
+
+Measured against the reference mirror, the declared total and an intercepted
+`fetch` agreed to within 0.03 MiB (22.09 vs 22.12) — the difference is
+`manifest.json` itself. That is why no wrapper is needed: the number is already in
+the data.
+
+**Which host served it.** `EntryInfo` does not expose it on purpose — a consumer
+should not depend on which mirror answered. Use `verify-three-lines.py` when that
+is the question.
+
+### Recorded results (2026-11-05)
+
+```
+Octave-Full-Wasm/v0.1.0 [wasm32] + OpenModelica/v0.2.0-wasm32 [omc]
+  7 files, 114,533,242 B decoded, 22.09 MiB declared wire
+
+EO  (static.isui.ren)            3 runs: 25.2s / 26.9s / 27.4s
+CF  (static.mango-mesa.ccwu.cc)  3 runs: 31.2s / 33.3s / 33.6s
+
+Same payload, same verified sha256 on every run. EO ~20% faster on this egress.
+
+Codec chain, same releases, measured on the same link:
+  default (manifest order -> zstd)   22.09 MiB wire   ~30s
+  ["identity","gzip"]               109.23 MiB wire   180.8s
+```
+
+**Caveat, measured:** direct connections from the test host to EO intermittently
+stall (2 of 6 plain GETs of one cached chunk returned nothing for 15 s+). The same
+URLs through a proxy were 5/5 clean, and CF direct was 6/6 clean. Both lines above
+were therefore measured over the same proxy so the comparison isolates the mirror,
+not the egress. A consumer whose network stalls this way will see the client spend
+its retry budget and, if all roots fail, report `chunk-unavailable` — which is the
+correct outcome, but `attemptBudgetMs` is the knob to raise.
+
+### Edge acceptance
 
 ```
 # three-line edge acceptance
