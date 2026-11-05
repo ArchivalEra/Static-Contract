@@ -42,7 +42,13 @@
  */
 import { openRelease, useDecoder, type EntryInfo, type ReleaseRef } from "./fetch-concurrent";
 
-/** Products to fetch. wasm32/omc are the products the contract currently serves. */
+/**
+ * Products to fetch. These are the two the contract currently serves, and they
+ * are **examples, not configuration**: point this at your own releases when you
+ * copy the file. Overridable at run time:
+ *
+ *   SC_CATALOGUE=https://your-mirror/catalogue.json npx tsx examples/fetch-release.ts
+ */
 const TARGETS: { id: string; product: string }[] = [
   { id: "Octave-Full-Wasm/v0.1.0", product: "wasm32" },
   { id: "OpenModelica-Full-Wasm/v0.2.0-wasm32", product: "omc" },
@@ -57,7 +63,16 @@ const TARGETS: { id: string; product: string }[] = [
  */
 const BURST = 1;
 
-const CATALOGUE = "https://static.isui.ren/catalogue.json";
+/**
+ * Where to read the catalogue from.
+ *
+ * `SC_CATALOGUE` overrides it. This host is the reference mirror of the cluster
+ * this repository belongs to — swapping it (or the TARGETS above) is the first
+ * thing to do when reusing this file elsewhere.
+ */
+const CATALOGUE =
+  (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env
+    ?.SC_CATALOGUE ?? "https://static.isui.ren/catalogue.json";
 
 interface Catalogue {
   releases: ReleaseRef[];
@@ -163,8 +178,18 @@ async function main(): Promise<void> {
   );
   console.log("requests per host:", JSON.stringify(hosts));
 
-  const mirror = Object.keys(hosts).filter((h) => !h.includes("github.com"));
-  if (mirror.length === Object.keys(hosts).length) {
+  // Which hosts were reached tells us whether the fallback was used, but the
+  // decision must come from what the catalogue *declared*, not from sniffing for
+  // a particular vendor: any non-GitHub fallback would be miscounted as a mirror.
+  const declaredMirrors = new Set(
+    TARGETS.map((t) => catalogue.releases.find((r) => r.id === t.id))
+      .filter((r): r is ReleaseRef => Boolean(r))
+      .map((r) => new URL(r.base).host),
+  );
+  const fallbackHosts = [...declaredMirrors].length
+    ? Object.keys(hosts).filter((h) => !declaredMirrors.has(h))
+    : [];
+  if (fallbackHosts.length === 0) {
     console.log(
       "Every request landed on the mirror — `base` carried the whole run and the\n" +
         "fallback was never needed. That is the designed behaviour, not a sign that\n" +
@@ -172,8 +197,9 @@ async function main(): Promise<void> {
     );
   } else {
     console.log(
-      "Some requests were served by the fallback. That is normal operation too —\n" +
-        "`base_proxy` exists to make a failing mirror a non-event for consumers.",
+      `Some requests went to a fallback host (${fallbackHosts.join(", ")}). That is\n` +
+        "normal operation too — `base_proxy` exists to make a failing mirror a\n" +
+        "non-event for consumers.",
     );
   }
 }

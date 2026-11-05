@@ -119,11 +119,44 @@ export interface ReleaseHandle {
    * release. Fetches inside an entry still run `CONCURRENCY`-wide.
    */
   readAll(): AsyncIterable<{ info: EntryInfo; bytes: Bytes }>;
+  /**
+   * Release everything this handle holds: abort in-flight requests and detach the
+   * caller's abort listener.
+   *
+   * Without this the listener registered on `options.signal` lives as long as the
+   * caller's signal does — for an app-level signal that is the process lifetime,
+   * and it keeps this handle reachable, so every `openRelease` leaks one. Idempotent.
+   */
+  close(): void;
 }
 
 export interface OpenOptions {
   /** Cancels every request this handle owns. */
   signal?: AbortSignal;
+  /**
+   * Parallel chunk fetches per entry. Default 2.
+   *
+   * The default was measured against one mirror on one link; it is not a
+   * property of the protocol. `chunks` are independent by construction (canon
+   * V5), so raising this is always legal — whether it helps depends on the link.
+   */
+  concurrency?: number;
+  /** Attempts per root before moving to the next root. Default 3. */
+  attemptsPerRoot?: number;
+  /**
+   * Timeout for one attempt. Default 5000 ms, but **derived per request**: a
+   * chunk whose declared size cannot plausibly transfer within the default gets
+   * proportionally more.
+   *
+   * A flat budget is wrong in both directions. Measured on the reference mirror,
+   * the average zstd chunk is 865 KB — about 1.5 s at 0.55 MiB/s, so 5 s is
+   * comfortable. But a 5 MiB `identity` chunk needs 8.3–9.1 s on the same link,
+   * so a flat 5 s would abort a healthy transfer and mark a good root dead.
+   * Supplying this overrides the derivation for every request.
+   */
+  attemptBudgetMs?: number;
+  /** Called after each entry resolves, for UI progress on large releases. */
+  onEntry?: (info: EntryInfo, done: number, total: number) => void;
 }
 
 export type ContractErrorCode =
@@ -258,24 +291,31 @@ const ASSET_NAME = /^[A-Za-z0-9_-][A-Za-z0-9._-]*$/;
  * single 120 s deadline spent the whole budget on one stall and then reported a
  * failure that a second try would have avoided.
  *
- * Five seconds covers a 5 MiB chunk at ~1 MiB/s, which is the slow-but-working
- * case; anything slower than that is indistinguishable from a stall at this
- * granularity and is better served by trying again.
+ * These are **defaults, not protocol facts** — all three are overridable through
+ * `OpenOptions`. The reference mirror is one link; a consumer on a slower or
+ * faster one must be able to adjust without forking this file.
  */
-const ATTEMPTS_PER_ROOT = 3;
-const ATTEMPT_BUDGET_MS = 5_000;
+const DEFAULT_ATTEMPTS_PER_ROOT = 3;
+const DEFAULT_ATTEMPT_BUDGET_MS = 5_000;
 
 /**
- * Parallel chunk fetches per entry.
+ * Assumed transfer rate used to scale an attempt budget to a chunk's size.
  *
- * Two. Not because the mirror caps connections — an earlier reading of "P=3
- * collapses to 0.16 MiB/s" turned out to be sampling noise from stalled chunks,
- * not a concurrency limit — but because on a link where a single 5 MiB chunk
- * already runs at 1–8 MiB/s, two in flight saturate it and more just queues.
- * `chunks` are independent by construction (canon V5), so a consumer on a fatter
- * link can raise this without violating anything.
+ * 0.5 MiB/s is the measured floor of the reference link. Dividing a chunk's
+ * declared encoded size by this gives the time it plausibly needs, which is then
+ * given two times headroom. A 865 KB zstd chunk lands at ~3.5 s (the flat 5 s
+ * default still governs); a 5 MiB identity chunk gets ~20 s instead of being
+ * killed at 5 s.
+ *
+ * Without this, the retry budget quietly encodes one link's speed into every
+ * consumer: on a half-speed link, healthy transfers get aborted, the root gets
+ * marked dead, and the fallback carries everything.
  */
-const CONCURRENCY = 2;
+const ASSUMED_BYTES_PER_SECOND = 512 * 1024;
+const BUDGET_HEADROOM = 2;
+
+/** Parallel chunk fetches per entry. Overridable; see `OpenOptions.concurrency`. */
+const DEFAULT_CONCURRENCY = 2;
 
 // ── internal shapes ───────────────────────────────────────────────────────────
 
@@ -342,14 +382,18 @@ export async function openRelease(
   const relay = () => session.abort();
   options.signal?.addEventListener("abort", relay, { once: true });
 
-  const health = new RootHealth(roots);
+  const concurrency = Math.max(1, options.concurrency ?? DEFAULT_CONCURRENCY);
+  const health = new RootHealth(roots, options.attemptsPerRoot, options.attemptBudgetMs);
 
   // ── manifest ────────────────────────────────────────────────────────────────
   let raw: Bytes;
   let rawText: string;
   try {
-    raw = await health.fetchAcrossRoots((root, budget) =>
-      httpGet(joinUrl(root, "manifest.json"), AbortSignal.any([session.signal, budget])),
+    raw = await health.fetchAcrossRoots(
+      (root, budget) =>
+        httpGet(joinUrl(root, "manifest.json"), AbortSignal.any([session.signal, budget])),
+      undefined,
+      "manifest-unreachable",
     );
     rawText = new TextDecoder().decode(raw);
   } catch (e) {
@@ -388,20 +432,34 @@ export async function openRelease(
     }
     // `fetchEntry` rethrows a caller abort unchanged so the root ledger is not
     // penalised; the public surface translates it into this module's error type.
-    return translate(fetchEntry(planned, health, subtle, session.signal), entry.key);
+    return translate(
+      fetchEntry(planned, health, subtle, session.signal, concurrency),
+      entry.key,
+    );
   };
+
+  const close = () => {
+    session.abort();
+    options.signal?.removeEventListener("abort", relay);
+  };
+
+  const entries = [...plan.values()].map((p) => p.info);
 
   return {
     id: ref.id,
     license: manifest.license ?? null,
-    entries: [...plan.values()].map((p) => p.info),
+    entries,
+    close,
     read,
     async *readAll() {
+      let done = 0;
       for (const planned of plan.values()) {
         const bytes = await translate(
-          fetchEntry(planned, health, subtle, session.signal),
+          fetchEntry(planned, health, subtle, session.signal, concurrency),
           planned.info.key,
         );
+        done++;
+        options.onEntry?.(planned.info, done, entries.length);
         yield { info: planned.info, bytes };
       }
     },
@@ -593,12 +651,13 @@ async function fetchEntry(
   health: RootHealth,
   subtle: Pick<SubtleCrypto, "digest">,
   session: AbortSignal,
+  concurrency: number,
 ): Promise<Bytes> {
   const { info, variant } = planned;
   const chunks = variant.chunks;
 
   // Entry-scoped cancellation: the first failure aborts this entry's siblings.
-  // Without it, one bad chunk leaves CONCURRENCY-1 downloads running for a
+  // Without it, one bad chunk leaves `concurrency`-1 downloads running for a
   // result nobody will use.
   const scope = new AbortController();
   const relay = () => scope.abort();
@@ -612,8 +671,9 @@ async function fetchEntry(
       const i = next++;
       if (i >= chunks.length) return;
       const c = chunks[i];
-      const encoded = await health.fetchAcrossRoots((root, budget) =>
-        httpGet(joinUrl(root, c.file), AbortSignal.any([scope.signal, budget])),
+      const encoded = await health.fetchAcrossRoots(
+        (root, budget) => httpGet(joinUrl(root, c.file), AbortSignal.any([scope.signal, budget])),
+        c.bytes,
       );
       // Byte length before hash: a truncated response is rejected without hashing.
       if (encoded.byteLength !== c.bytes) {
@@ -637,7 +697,7 @@ async function fetchEntry(
   };
 
   try {
-    const workers = Math.max(1, Math.min(CONCURRENCY, chunks.length));
+    const workers = Math.max(1, Math.min(concurrency, chunks.length));
     await Promise.all(Array.from({ length: workers }, worker));
 
     const total = decoded.reduce((n, part) => n + part.byteLength, 0);
@@ -694,15 +754,41 @@ const EMPTY: Bytes = new Uint8Array(0);
 class RootHealth {
   private readonly roots: string[];
   private readonly failures: number[];
+  private readonly attemptsPerRoot: number;
+  private readonly fixedBudgetMs: number | undefined;
 
-  constructor(roots: string[]) {
+  constructor(
+    roots: string[],
+    attemptsPerRoot = DEFAULT_ATTEMPTS_PER_ROOT,
+    fixedBudgetMs?: number,
+  ) {
     this.roots = roots;
     this.failures = roots.map(() => 0);
+    this.attemptsPerRoot = Math.max(1, attemptsPerRoot);
+    this.fixedBudgetMs = fixedBudgetMs;
+  }
+
+  /**
+   * Budget for one attempt at a body of `expectBytes`.
+   *
+   * An explicit `attemptBudgetMs` wins. Otherwise scale by size: a fixed budget
+   * derived from one link's speed aborts healthy transfers on any slower link,
+   * and a 5 MiB identity chunk needs eight times the time of an 865 KB zstd one.
+   * `expectedBytes === undefined` (the manifest, whose size is unknown until it
+   * arrives) uses the flat default.
+   */
+  private budgetFor(expectedBytes?: number): number {
+    if (this.fixedBudgetMs !== undefined) return this.fixedBudgetMs;
+    if (expectedBytes === undefined) return DEFAULT_ATTEMPT_BUDGET_MS;
+    const plausible = (expectedBytes / ASSUMED_BYTES_PER_SECOND) * 1000 * BUDGET_HEADROOM;
+    return Math.max(DEFAULT_ATTEMPT_BUDGET_MS, Math.ceil(plausible));
   }
 
   /** Tries each root in least-failed-first order, each with its own attempt budget. */
   async fetchAcrossRoots(
     attempt: (root: string, signal: AbortSignal) => Promise<Bytes>,
+    expectBytes?: number,
+    failCode: ContractErrorCode = "chunk-unavailable",
   ): Promise<Bytes> {
     const order = this.roots
       .map((root, i) => ({ root, i }))
@@ -713,10 +799,12 @@ class RootHealth {
 
     for (const { root, i } of order) {
       let delivered = false;
+      let answeredWithStatus = false;
 
-      for (let tryNo = 1; tryNo <= ATTEMPTS_PER_ROOT; tryNo++) {
+      const budgetMs = this.budgetFor(expectBytes);
+      for (let tryNo = 1; tryNo <= this.attemptsPerRoot; tryNo++) {
         const budget = new AbortController();
-        const timer = setTimeout(() => budget.abort(), ATTEMPT_BUDGET_MS);
+        const timer = setTimeout(() => budget.abort(), budgetMs);
         try {
           const bytes = await attempt(root, budget.signal);
           delivered = true;
@@ -732,27 +820,35 @@ class RootHealth {
           lastRoot = root;
           // A status is an answer from this root: a 404 will still be a 404 on
           // a retry, so skip the rest of this root's budget and move on.
-          if (isStatus(e)) break;
+          if (isStatus(e)) {
+            answeredWithStatus = true;
+            break;
+          }
           // Otherwise a stall or transport failure — spend another attempt.
         } finally {
           clearTimeout(timer);
         }
       }
 
-      if (!delivered) {
-        // A status still means this root answered inadequately; a stall means it
-        // did not answer at all. Both count, since the ledger's only question is
-        // "did this root deliver this file".
+      if (!delivered && !answeredWithStatus) {
+        // Only transport failures count against a root. A 404 (or any status) is
+        // the root answering correctly about a file it does not have — one bad
+        // chunk must not permanently demote a healthy mirror for every other
+        // file in the release.
         this.failures[i] += 1;
       }
     }
 
+    // The code is the caller's, not a constant: "no root served the manifest" and
+    // "no root served this chunk" are different failures, and a consumer that
+    // cannot tell them apart cannot decide whether to retry the whole release or
+    // skip one file. Passing a fixed "chunk-unavailable" here made
+    // `manifest-unreachable` unreachable, because `wrap()` passes a
+    // ContractError through unchanged.
     const reason = last instanceof Error ? `${last.name}: ${last.message}` : String(last);
-    throw new ContractError(
-      "chunk-unavailable",
-      `every root failed (last: ${lastRoot || "none"} — ${reason})`,
-      { cause: last },
-    );
+    throw new ContractError(failCode, `every root failed (last: ${lastRoot || "none"} — ${reason})`, {
+      cause: last,
+    });
   }
 }
 

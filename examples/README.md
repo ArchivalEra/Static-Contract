@@ -31,7 +31,9 @@ hashes stay behind that line. A caller never sees a chunk, so it cannot assemble
 name, decode a concatenation, or skip a hash.
 
 For a whole release, `readAll()` yields entries one at a time in manifest order, so
-peak memory is the largest single entry rather than the whole release:
+peak memory is bounded by one entry rather than the whole release (the entry
+itself peaks at roughly 2x its size, because the decoded chunks and the joined
+buffer coexist while assembling):
 
 ```ts
 for await (const { info, bytes } of rel.readAll()) {
@@ -162,7 +164,7 @@ succeeded in 0.39–1.99 s. Success is fast when it comes; failure is not a slow
 transfer but a request that stops answering.
 
 That shape makes a long deadline the wrong tool. The policy is therefore
-**per-root: `ATTEMPTS_PER_ROOT` (3) tries of `ATTEMPT_BUDGET_MS` (5 s) each**,
+**per-root: 3 tries of 5 s each by default**,
 `base` first, and only when those are exhausted does `base_proxy` get its own
 three. A dead request costs 15 s per root instead of 120 s, and a stall gets
 retried rather than reported.
@@ -178,13 +180,40 @@ rather than burning three attempts on an unreachable file.
 
 ### Concurrency
 
-`read()` parallelises chunk fetches within an entry (`CONCURRENCY`, 2). `BURST`
+`read()` parallelises chunk fetches within an entry (2 by default). `BURST`
 adds parallelism across entries; the default is 1 because two connections
 already saturate this link. An earlier note here claimed "P=3 collapses to
 0.16 MiB/s" — that was sampling noise from stalled chunks, not a connection cap,
 and is corrected: the mirror did not show a concurrency limit once stalls were
-controlled for. The knob is exposed so the claim can be re-tested on a link with
-different characteristics rather than assumed.
+controlled for.
+
+### What is configurable
+
+The three link-dependent values are defaults, not protocol facts, and are all
+overridable through `OpenOptions`:
+
+```ts
+const release = await openRelease(ref, {
+  concurrency: 4,          // parallel chunk fetches per entry
+  attemptsPerRoot: 3,      // tries per root before falling through
+  attemptBudgetMs: 20000,  // explicit budget; omit to derive from chunk size
+  onEntry: (info, done, total) => setProgress(done, total),
+  signal: abort.signal,
+});
+// ...
+release.close();           // aborts in-flight work and detaches the listener
+```
+
+`attemptBudgetMs` is derived per request when omitted: a chunk's declared encoded
+size is divided by an assumed 0.5 MiB/s and given 2x headroom, never below the
+5 s default. That matters because a flat budget encodes one link's speed into
+every consumer — a 865 KB zstd chunk needs ~1.5 s, a 5 MiB identity chunk needs
+8–9 s on the same link, and a flat 5 s would abort the second one and mark a
+healthy mirror dead.
+
+`close()` exists because `openRelease` registers an abort listener on the
+caller's signal; without releasing it, a long-lived app-level signal accumulates
+one listener and one retained handle per release opened.
 
 ## `verify-three-lines.py` — whose edge did the bytes cross?
 
