@@ -130,6 +130,22 @@ export interface ReleaseHandle {
   close(): void;
 }
 
+/**
+ * What the per-entry codec callback can see.
+ *
+ * Deliberately excludes `codec` (that is the *result* of this decision) and
+ * `license` (irrelevant to transfer cost). A caller chooses a chain from the
+ * entry's identity and size, never from the answer it is about to produce.
+ */
+export interface EntryChoice {
+  readonly key: string;
+  readonly product: string;
+  readonly name: string;
+  readonly bytes: number;
+  readonly sha256: string;
+  readonly role: "payload" | "license" | "notice";
+}
+
 export interface OpenOptions {
   /** Cancels every request this handle owns. */
   signal?: AbortSignal;
@@ -185,9 +201,15 @@ export interface OpenOptions {
    * the chain moves on. Only an entry with **no** decodable variant at all fails,
    * and the message then lists what was offered.
    *
+   * A function form resolves the chain **per entry**. That matters because cost
+   * decisions are not uniform inside one release: a 29 MB `octave.wasm` is worth
+   * paying a zstd decoder for, a 464 KB `octave.js` may not be, and a single
+   * release-wide list cannot express that. Return `undefined` for an entry to
+   * fall back to the manifest order. Octave-UI asked for this in their 069.
+   *
    * Default: the manifest's own order (canon §3.3's "in codecs order").
    */
-  codecPreference?: string[];
+  codecPreference?: string[] | ((entry: EntryChoice) => string[] | undefined);
 }
 
 export type ContractErrorCode =
@@ -429,7 +451,7 @@ export async function openRelease(
   try {
     raw = await health.fetchAcrossRoots(
       (root, budget) =>
-        httpGet(joinUrl(root, "manifest.json"), AbortSignal.any([session.signal, budget])),
+        httpGet(joinUrl(root, "manifest.json"), session.signal, budget),
       undefined,
       "manifest-unreachable",
     );
@@ -513,7 +535,11 @@ export async function openRelease(
  * nothing — a manifest that half-passes is not used, because acting on the
  * valid subset would mean silently dropping entries the producer published.
  */
-function validate(m: RawManifest, id: string, preference?: string[]): Map<string, Planned> {
+function validate(
+  m: RawManifest,
+  id: string,
+  preference?: OpenOptions["codecPreference"],
+): Map<string, Planned> {
   if (typeof m.schema !== "number" || !SUPPORTED_SCHEMAS.has(m.schema)) {
     throw new ContractError(
       "schema-unsupported",
@@ -536,7 +562,19 @@ function validate(m: RawManifest, id: string, preference?: string[]): Map<string
     if (plan.has(key)) {
       throw new ContractError("manifest-invalid", `release ${id}: duplicate entry ${key}`);
     }
-    const variant = pickVariant(e, declared, preference, id);
+    // Per-entry chains are resolved from a read-only projection built from the
+    // raw entry. The callback cannot mutate the manifest; it only chooses an order.
+    const chain = typeof preference === "function"
+      ? preference({
+          key: `${e.product}/${e.name}`,
+          product: e.product,
+          name: e.name,
+          bytes: e.bytes,
+          sha256: e.sha256,
+          role: e.role ?? "payload",
+        })
+      : preference;
+    const variant = pickVariant(e, declared, chain, id);
     const own = e.license === undefined ? undefined : checkLicense(e.license, `${id} ${key}`);
     plan.set(key, {
       variant,
@@ -735,7 +773,7 @@ async function fetchEntry(
       if (i >= chunks.length) return;
       const c = chunks[i];
       const encoded = await health.fetchAcrossRoots(
-        (root, budget) => httpGet(joinUrl(root, c.file), AbortSignal.any([scope.signal, budget])),
+        (root, budget) => httpGet(joinUrl(root, c.file), scope.signal, budget),
         c.bytes,
       );
       // Byte length before hash: a truncated response is rejected without hashing.
@@ -927,6 +965,30 @@ function isStatus(e: unknown): boolean {
 }
 
 /**
+ * One signal that aborts when any of its inputs aborts.
+ *
+ * `AbortSignal.any` would do this, but it is Safari 17.4+ / Chrome 116+, and this
+ * file is meant to run in any browser with `fetch`. Listeners are detached once
+ * any input fires so a long-lived caller signal does not accumulate one listener
+ * per request.
+ */
+function combineSignals(...inputs: AbortSignal[]): AbortSignal {
+  const out = new AbortController();
+  const onAbort = () => out.abort();
+  const already = inputs.find((s) => s.aborted);
+  if (already) {
+    out.abort();
+    return out.signal;
+  }
+  for (const s of inputs) s.addEventListener("abort", onAbort, { once: true });
+  // Detach on the winner; the other listeners are harmless but must not linger.
+  out.signal.addEventListener("abort", () => {
+    for (const s of inputs) s.removeEventListener("abort", onAbort);
+  }, { once: true });
+  return out.signal;
+}
+
+/**
  * The only place bytes enter the client: one GET, under the caller's signal.
  *
  * The attempt budget lives in `RootHealth`, not here. This function performs
@@ -942,19 +1004,16 @@ function isStatus(e: unknown): boolean {
  * the budget expires — with a plain whole-body read there is no way to tell "slow"
  * from "dead" until it is too late to try again.
  */
-async function httpGet(url: string, signal: AbortSignal): Promise<Bytes> {
+async function httpGet(url: string, session: AbortSignal, budget: AbortSignal): Promise<Bytes> {
   const doFetch = globalThis.fetch;
   if (!doFetch) {
     throw new ContractError("unsupported-environment", "no fetch implementation available");
   }
-  if (typeof AbortSignal.any !== "function") {
-    // Safari < 17.4. Reported here rather than as "every mirror is down", which
-    // is what a TypeError thrown per root would look like.
-    throw new ContractError(
-      "unsupported-environment",
-      "AbortSignal.any is unavailable — this client needs a browser from 2024 or later",
-    );
-  }
+
+  // Compose without `AbortSignal.any`: that API is Safari 17.4+ / Chrome 116+, and
+  // a reference client for *browsers* should not reject an older one for a signal
+  // helper. Octave-UI flagged this in their 069; it was a real portability bug.
+  const signal = combineSignals(session, budget);
 
   const res = await doFetch(url, { method: "GET", signal });
   if (!res.ok) {

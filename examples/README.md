@@ -168,6 +168,49 @@ and 6x the time, because `identity` sends the raw bytes. A consumer on a fast
 local link may prefer that (no decompression cost); a consumer on a metered or
 slow link will not. The contract deliberately leaves that call to the client.
 
+## Decoders that must not persist
+
+`useDecoder` takes a function, so **how the decoder's own bytes are obtained is
+outside this module**. That boundary is deliberate — see the ruling below.
+
+Browser runtimes have no native zstd, and `fzstd` (24,407 B raw / 6,864 B gzip) is
+the usual answer. A naive `import("fzstd")` becomes a content-hashed, long-cached
+asset in the bundle: fine normally, but some deployments require the opposite pair
+of properties — **no persistence across visits**, yet **only one fetch per
+document**. `import()` satisfies the second and breaks the first; fetching on every
+reload satisfies the first and breaks the second.
+
+Octave-UI solved this in their `069` and offered to contribute it. The shape:
+
+1. Build-time: copy `fzstd`'s ESM file to a **plain static asset** and pin its
+   sha256. It will be executed in-page, so a poisoned dependency must fail the
+   build, not the user.
+2. `fetch(url, { cache: "no-store" })`, with a **per-document nonce** in the query
+   as a second guard against an ignored `no-store` or a long CDN cache.
+3. `sha256` the bytes before executing them; blob-import; revoke the object URL
+   immediately.
+4. One module-level promise per document, so concurrent decodes share one fetch.
+   **A failure is remembered too** — do not retry a dead CDN; fall through the
+   contract's codec chain to gzip instead.
+
+Never `sessionStorage` (Chromium persists it across reloads), `localStorage`,
+IndexedDB, Cache Storage, OPFS, SW precache, or `<link rel=preload>`.
+
+**Ruling: this stays a documented recipe, not an API in this file.** Three reasons:
+
+- It is a **deployment constraint**, not a contract behaviour. Adding
+  `persistDecoders?: boolean` to `OpenOptions` would put a hosting policy into a
+  protocol client.
+- The decoder loader is a separate module with its own test surface (Octave-UI has
+  15 cases). Folding it in would couple two things with different lifetimes: a
+  release handle closes, a document's decoder does not.
+- `useDecoder(name, fn)` already accepts the result of such a loader unchanged:
+  `useDecoder("zstd", await createNoPersistDecoder({ url, sha256 }))`. No new
+  entry point is needed.
+
+A consumer that needs this should copy Octave-UI's `fzstdLoader.ts` (AGPL-3.0,
+offered under looser terms on request) rather than waiting for this file to grow.
+
 ## `test/` — offline tests
 
 ```bash
@@ -289,13 +332,23 @@ Codec chain, same releases, measured on the same link:
   ["identity","gzip"]               109.23 MiB wire   180.8s
 ```
 
-**Caveat, measured:** direct connections from the test host to EO intermittently
-stall (2 of 6 plain GETs of one cached chunk returned nothing for 15 s+). The same
-URLs through a proxy were 5/5 clean, and CF direct was 6/6 clean. Both lines above
-were therefore measured over the same proxy so the comparison isolates the mirror,
-not the egress. A consumer whose network stalls this way will see the client spend
-its retry budget and, if all roots fail, report `chunk-unavailable` — which is the
-correct outcome, but `attemptBudgetMs` is the knob to raise.
+### Known network phenomenon: partial and stalled transfers
+
+**This is not your bug.** Two independent consumers measured it:
+
+- Static-Contract: 2 of 6 plain GETs of one *cached* chunk returned nothing for
+  15 s+; the same URLs through a proxy were 5/5 clean, CF direct 6/6 clean.
+- Octave-UI (`069`): repeated `UND_ERR_SOCKET` and half-finished bodies, e.g.
+  one chunk arriving at 1,262,461 of its declared 1,669,830 bytes.
+
+Both lines above were therefore measured over the same proxy so the comparison
+isolates the mirror, not the egress.
+
+This is precisely why verification is **per chunk** and happens before decode:
+a truncated body is caught at the chunk boundary with a named file and a byte
+count, instead of surfacing only after nine chunks have been assembled. If every
+root exhausts its budget the client reports `chunk-unavailable` — the correct
+outcome, but `attemptBudgetMs` is the knob to raise on such a link.
 
 ### Edge acceptance
 

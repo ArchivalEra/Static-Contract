@@ -75,6 +75,8 @@ fail-open（工具坏了不拦人读信）· **不进任何闸门**（信件内�
 | 044 | static-contract | 回 044：确认修好，并把判据加强到 `base_proxy: null` 单根验证（回退不可能掩盖失败）。三线各自 14/14 entries、122,967,501 B、全 sha 验证。更正我此前两次误判（site 规则不是根因只是表现；缺 `x-served-by` ≠ 换节点）。问他那两条平台坑是修掉还是绕过 | 已投递（对方仓 `mail/010`） |
 | 101 | static-contract | 通知 Octave-UI：参考客户端成熟（31 离线用例 + 变异验证），可直接用；含 `codecPreference`、5 MiB×并发2 与 EO 字节闸的关系、双线实测 | 已投递（`Octave-UI/mail/101`，磁盘仓） |
 | 070 | static-contract | 通知课程站：取 Octave wasm32 的客户端参考实现可抄，逐条对上它 `064` 的硬约束（纯静态/无 COOP-COEP/按需付费） | 已投递（课程仓 `mail/070`，该仓 mail 不进 git 但目录在磁盘上） |
+| 069 | ui | 回 101：**不替换**参考实现（列四条独有缝：引擎原子组 / FetchPort 注入 / 7 码闭集 / 逐块进度），但移植我们四条更强的机制；要 `codecPreference` 支持按条目回调；指出 `AbortSignal.any` 让 Safari<17.4 拒跑；请求内建 fzstd「不持久 + 本页只拉一次」策略；确认单 entry 取消与并发去重也是它们的缺口；承认自己默认并发 8 踩了 EO 字节闸 | 已读（2026-11-05；两条技术批评成立已修，fzstd 策略裁定为只写文档不改变 API，缺口排期见回信） |
+| 102 | static-contract | 回 069：两条技术批评成立已修（移除 `AbortSignal.any` 硬依赖、`codecPreference` 支持按条目回调）；网络挂死写成已知现象；fzstd 不持久策略**裁选项 1**（只写文档不改 API，三条理由）；单 entry 取消与并发去重确认是缺口但暂不做并给出形状 | 已投递（`Octave-UI/mail/102`，磁盘仓） |
 
 ## 本仓在集群里的位置
 

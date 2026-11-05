@@ -573,6 +573,66 @@ describe("codec preference chain", () => {
   });
 });
 
+describe("per-entry codec preference", () => {
+  // Octave-UI's case from their 069: one release, one big .wasm worth paying a
+  // zstd decoder for, one small .js that is not. A release-wide chain cannot
+  // express that; the function form can.
+  test("the function form picks per entry by size", async () => {
+    const a = buildRelease({ size: 200_000, chunkSize: 40_000, codecs: ["zstd", "gzip"], name: "big.wasm" });
+    const b = buildRelease({ size: 2_000, chunkSize: 1_000, codecs: ["zstd", "gzip"], name: "small.js", seed: 9 });
+    const manifest = {
+      ...a.manifest,
+      entries: [...(a.manifest.entries as unknown[]), ...(b.manifest.entries as unknown[])],
+    };
+    const fake = installFake(manifest, new Map([...a.files, ...b.files]));
+    restore = fake.restore;
+
+    const rel = await openRelease({ ...REF, id: "two/entries" }, {
+      codecPreference: (entry) => (entry.bytes > 10_000 ? ["zstd"] : ["gzip"]),
+    });
+    const byName = new Map(rel.entries.map((e) => [e.name, e.codec]));
+    assert.equal(byName.get("big.wasm"), "zstd");
+    assert.equal(byName.get("small.js"), "gzip");
+
+    for (const e of rel.entries) {
+      const bytes = await rel.read(e);
+      assert.equal(bytes.byteLength, e.bytes, `${e.name} verifies under its chosen codec`);
+    }
+    rel.close();
+  });
+
+  test("the callback sees identity and size, not the chosen codec", async () => {
+    const fx = buildRelease({ size: 3000, chunkSize: 1000, codecs: ["gzip", "zstd"] });
+    const fake = installFake(fx.manifest, fx.files);
+    restore = fake.restore;
+
+    const seen: Record<string, unknown>[] = [];
+    const rel = await openRelease(REF, {
+      codecPreference: (entry) => {
+        seen.push({ ...entry });
+        return undefined; // fall back to the manifest order
+      },
+    });
+    assert.equal(seen.length, 1);
+    assert.equal(seen[0].key, "wasm32/payload.wasm");
+    assert.equal(seen[0].bytes, 3000);
+    assert.equal("codec" in seen[0], false, "callback cannot see the result of its own decision");
+    assert.equal("license" in seen[0], false, "license is not a transfer-cost input");
+    assert.equal(rel.entries[0].codec, "gzip", "undefined falls back to manifest order");
+    rel.close();
+  });
+
+  test("returning an empty list is not an error", async () => {
+    const fx = buildRelease({ size: 3000, chunkSize: 1000, codecs: ["gzip"] });
+    const fake = installFake(fx.manifest, fx.files);
+    restore = fake.restore;
+
+    const rel = await openRelease(REF, { codecPreference: () => [] });
+    assert.equal(rel.entries[0].codec, "gzip");
+    rel.close();
+  });
+});
+
 describe("codec registry", () => {
   test("a codec can be unregistered, restoring the platform view", async () => {
     const fx = buildRelease({ size: 4000, chunkSize: 2000, codecs: ["zstd"] });
