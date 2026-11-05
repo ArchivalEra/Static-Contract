@@ -141,18 +141,25 @@ export class ContractError extends Error {
   readonly code: ContractErrorCode;
   readonly entry?: string;
   readonly file?: string;
+  /**
+   * HTTP status, when the failure was a response rather than a transport
+   * problem. Absent means "the request never produced an answer" — a stall or a
+   * dropped connection — which is retryable in a way a status is not.
+   */
+  readonly status?: number;
   override readonly cause?: unknown;
 
   constructor(
     code: ContractErrorCode,
     message: string,
-    detail: { entry?: string; file?: string; cause?: unknown } = {},
+    detail: { entry?: string; file?: string; status?: number; cause?: unknown } = {},
   ) {
     super(message);
     this.name = "ContractError";
     this.code = code;
     this.entry = detail.entry;
     this.file = detail.file;
+    this.status = detail.status;
     this.cause = detail.cause;
   }
 }
@@ -236,11 +243,39 @@ const MAX_CHUNK_BYTES = 2 ** 25;
  */
 const ASSET_NAME = /^[A-Za-z0-9_-][A-Za-z0-9._-]*$/;
 
-/** `fetch` has no timeout of its own; a server that goes quiet hangs forever. */
-const TIMEOUT_MS = 120_000;
+/**
+ * Attempts per root before moving on, and the budget for each.
+ *
+ * The mirror intermittently accepts a request and then never delivers it.
+ * Measured on the production EdgeOne line: the same 5 MiB chunk, six tries —
+ * two timed out past 40 s, four succeeded in 0.39–1.99 s. Success was fast when
+ * it came; failure was not a slow transfer but a request that simply stopped
+ * answering.
+ *
+ * So the useful unit is a **short, capped attempt repeated a few times**, not
+ * one long wait. Three attempts × 5 s bounds the cost of a dead request to 15 s
+ * per root, which is what makes falling through to the next root viable. A
+ * single 120 s deadline spent the whole budget on one stall and then reported a
+ * failure that a second try would have avoided.
+ *
+ * Five seconds covers a 5 MiB chunk at ~1 MiB/s, which is the slow-but-working
+ * case; anything slower than that is indistinguishable from a stall at this
+ * granularity and is better served by trying again.
+ */
+const ATTEMPTS_PER_ROOT = 3;
+const ATTEMPT_BUDGET_MS = 5_000;
 
-/** Parallel chunk fetches per entry. */
-const CONCURRENCY = 8;
+/**
+ * Parallel chunk fetches per entry.
+ *
+ * Two. Not because the mirror caps connections — an earlier reading of "P=3
+ * collapses to 0.16 MiB/s" turned out to be sampling noise from stalled chunks,
+ * not a concurrency limit — but because on a link where a single 5 MiB chunk
+ * already runs at 1–8 MiB/s, two in flight saturate it and more just queues.
+ * `chunks` are independent by construction (canon V5), so a consumer on a fatter
+ * link can raise this without violating anything.
+ */
+const CONCURRENCY = 2;
 
 // ── internal shapes ───────────────────────────────────────────────────────────
 
@@ -313,8 +348,8 @@ export async function openRelease(
   let raw: Bytes;
   let rawText: string;
   try {
-    raw = await health.fetchAcrossRoots((root) =>
-      httpGet(joinUrl(root, "manifest.json"), session.signal),
+    raw = await health.fetchAcrossRoots((root, budget) =>
+      httpGet(joinUrl(root, "manifest.json"), AbortSignal.any([session.signal, budget])),
     );
     rawText = new TextDecoder().decode(raw);
   } catch (e) {
@@ -577,8 +612,8 @@ async function fetchEntry(
       const i = next++;
       if (i >= chunks.length) return;
       const c = chunks[i];
-      const encoded = await health.fetchAcrossRoots((root) =>
-        httpGet(joinUrl(root, c.file), scope.signal),
+      const encoded = await health.fetchAcrossRoots((root, budget) =>
+        httpGet(joinUrl(root, c.file), AbortSignal.any([scope.signal, budget])),
       );
       // Byte length before hash: a truncated response is rejected without hashing.
       if (encoded.byteLength !== c.bytes) {
@@ -647,13 +682,11 @@ const EMPTY: Bytes = new Uint8Array(0);
  * dead mirror is retried once per entry (14 entries ⇒ 14 wasted round trips
  * before every chunk goes to the fallback).
  *
- * One pass over the roots, not several. A retry loop here would mask a mirror
- * defect rather than fix it: measured 2026-11-04, the EdgeOne mirror returned
- * `200, 200, 404, 200, 404, 404 …` for one existing chunk while GitHub answered
- * `200` ten times out of ten, with the 404s carrying `eo-cache-status: HIT` —
- * the mirror had cached a 404. Retrying would hide that from every operator
- * while multiplying requests on a 35-chunk, 122 MB release. The correct fix is
- * on the mirror; see mail/040.
+ * The retry budget is **per root, not global**: `ATTEMPTS_PER_ROOT` tries of
+ * `ATTEMPT_BUDGET_MS` each on `base`, and only after those are exhausted does
+ * `base_proxy` get its own budget. That is what makes the fallback meaningful —
+ * a root that is briefly stalling gets a few fast retries, while a root that is
+ * genuinely down costs a bounded 3 x 5 s rather than the whole request.
  *
  * A root that fails stays demoted: penalties decay only when the root itself
  * succeeds again, never because some *other* root succeeded.
@@ -667,35 +700,53 @@ class RootHealth {
     this.failures = roots.map(() => 0);
   }
 
-  /** Tries each root in least-failed-first order; returns the first response. */
-  async fetchAcrossRoots(attempt: (root: string) => Promise<Bytes>): Promise<Bytes> {
+  /** Tries each root in least-failed-first order, each with its own attempt budget. */
+  async fetchAcrossRoots(
+    attempt: (root: string, signal: AbortSignal) => Promise<Bytes>,
+  ): Promise<Bytes> {
     const order = this.roots
       .map((root, i) => ({ root, i }))
       .sort((a, b) => this.failures[a.i] - this.failures[b.i]);
 
     let last: unknown;
     let lastRoot = "";
+
     for (const { root, i } of order) {
-      try {
-        const bytes = await attempt(root);
-        // Only this root's own success pays down its debt.
-        this.failures[i] = Math.max(0, this.failures[i] - 1);
-        return bytes;
-      } catch (e) {
-        // A caller-driven abort is not this root's fault: rethrow instead of
-        // burning the ledger and trying the next root, which would keep fetching
-        // after the consumer asked to stop.
-        if (isAbort(e)) throw e;
-        // Any delivery failure counts: a refused connection, a 404 for one file,
-        // a body that never finished. All mean "this root did not deliver this
-        // file", which is the only question the ledger is answering.
+      let delivered = false;
+
+      for (let tryNo = 1; tryNo <= ATTEMPTS_PER_ROOT; tryNo++) {
+        const budget = new AbortController();
+        const timer = setTimeout(() => budget.abort(), ATTEMPT_BUDGET_MS);
+        try {
+          const bytes = await attempt(root, budget.signal);
+          delivered = true;
+          // Only this root's own success pays down its debt.
+          this.failures[i] = Math.max(0, this.failures[i] - 1);
+          return bytes;
+        } catch (e) {
+          // A caller-driven abort is not this root's fault: rethrow instead of
+          // burning the ledger and trying the next root, which would keep
+          // fetching after the consumer asked to stop.
+          if (isAbort(e) && !budget.signal.aborted) throw e;
+          last = e;
+          lastRoot = root;
+          // A status is an answer from this root: a 404 will still be a 404 on
+          // a retry, so skip the rest of this root's budget and move on.
+          if (isStatus(e)) break;
+          // Otherwise a stall or transport failure — spend another attempt.
+        } finally {
+          clearTimeout(timer);
+        }
+      }
+
+      if (!delivered) {
+        // A status still means this root answered inadequately; a stall means it
+        // did not answer at all. Both count, since the ledger's only question is
+        // "did this root deliver this file".
         this.failures[i] += 1;
-        last = e;
-        lastRoot = root;
       }
     }
-    // Naming the root matters: "fetch failed" alone gives the caller no way to
-    // tell a dead mirror from a dead network from a bad path.
+
     const reason = last instanceof Error ? `${last.name}: ${last.message}` : String(last);
     throw new ContractError(
       "chunk-unavailable",
@@ -706,24 +757,33 @@ class RootHealth {
 }
 
 /**
- * The only place bytes enter the client.
+ * A response the root actually sent (any status), as opposed to a stall or a drop.
  *
- * Two concerns live here and nowhere else:
- *
- *  - **Deadline.** `fetch` has no default timeout, so one is composed in
- *    unconditionally. It is disposed as soon as the body is read rather than
- *    left to fire later: `AbortSignal.timeout` keeps a timer alive for its full
- *    duration, and with a 120 s deadline across many sequential chunks those
- *    timers would outlive the work they guard.
- *
- *  - **Transient retry.** A dropped connection to one host is not the same
- *    failure as "this mirror does not have the file", but from `fetch`'s return
- *    value they are indistinguishable. One immediate retry absorbs the former
- *    without masking the latter: a genuine 404 or a genuine absence costs one
- *    extra request and still fails. Retries do *not* happen across roots — that
- *    is `RootHealth`'s job, one level up.
+ * A status is a final answer for that root: repeating the request cannot change
+ * it, so the budget should move to the next root instead of being spent on the
+ * same unreachable file.
  */
-async function httpGet(url: string, session: AbortSignal): Promise<Bytes> {
+function isStatus(e: unknown): boolean {
+  return e instanceof ContractError && typeof e.status === "number";
+}
+
+/**
+ * The only place bytes enter the client: one GET, under the caller's signal.
+ *
+ * The attempt budget lives in `RootHealth`, not here. This function performs
+ * exactly one request and reports honestly what happened — a status (the root
+ * answered), a stall (it stopped answering), or a transport drop. Deciding how
+ * many times to try and when to switch roots is the caller's job, and putting
+ * that decision one level up keeps a single attempt's failure classification
+ * unambiguous.
+ *
+ * The body is read as a stream rather than via `res.arrayBuffer()` so that the
+ * abort signal can interrupt a transfer that has already started. `arrayBuffer()`
+ * resolves once at the end, so a body that dies mid-flight is only noticed when
+ * the budget expires — with a plain whole-body read there is no way to tell "slow"
+ * from "dead" until it is too late to try again.
+ */
+async function httpGet(url: string, signal: AbortSignal): Promise<Bytes> {
   const doFetch = globalThis.fetch;
   if (!doFetch) {
     throw new ContractError("unsupported-environment", "no fetch implementation available");
@@ -737,46 +797,44 @@ async function httpGet(url: string, session: AbortSignal): Promise<Bytes> {
     );
   }
 
-  let attempt = 0;
-  for (;;) {
-    attempt++;
-    const deadline = new AbortController();
-    const timer = setTimeout(() => deadline.abort(), TIMEOUT_MS);
-    let timedOut = false;
-    const onTimeout = () => {
-      timedOut = true;
-    };
-    deadline.signal.addEventListener("abort", onTimeout, { once: true });
-
-    try {
-      const signal = AbortSignal.any([session, deadline.signal]);
-      const res = await doFetch(url, { method: "GET", signal });
-      if (!res.ok) {
-        // A status is an answer, not a transport failure: never retried.
-        throw new ContractError("chunk-unavailable", `GET ${url} -> ${res.status}`, { file: url });
-      }
-      return new Uint8Array(await res.arrayBuffer());
-    } catch (e) {
-      // A deadline is a property of this request, not a caller cancellation, and
-      // must NOT be classified as one: `fetchAcrossRoots` rethrows cancellations
-      // without trying the next root, which would make the timeout the one
-      // failure that never falls back — precisely backwards.
-      if (timedOut && isAbort(e)) {
-        throw new ContractError(
-          "chunk-unavailable",
-          `GET ${url} -> timed out after ${TIMEOUT_MS}ms`,
-          { file: url, cause: e },
-        );
-      }
-      if (e instanceof ContractError) throw e; // a status; already final
-      if (isAbort(e)) throw e; // the caller cancelled; not ours to retry
-      if (attempt >= 2) throw e; // one retry only
-      // else: transient transport failure — try once more.
-    } finally {
-      deadline.signal.removeEventListener("abort", onTimeout);
-      clearTimeout(timer);
-    }
+  const res = await doFetch(url, { method: "GET", signal });
+  if (!res.ok) {
+    // A status is an answer, not a transport failure.
+    throw new ContractError("chunk-unavailable", `GET ${url} -> ${res.status}`, {
+      file: url,
+      status: res.status,
+    });
   }
+
+  if (!res.body) {
+    // No streaming support in this runtime: the signal still aborts the read.
+    return new Uint8Array(await res.arrayBuffer());
+  }
+
+  const reader = res.body.getReader();
+  const parts: Uint8Array[] = [];
+  let received = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) {
+        parts.push(value);
+        received += value.byteLength;
+      }
+    }
+  } finally {
+    // Release the lock even on abort, so the connection can be torn down.
+    reader.releaseLock();
+  }
+
+  const out = new Uint8Array(received);
+  let at = 0;
+  for (const p of parts) {
+    out.set(p, at);
+    at += p.byteLength;
+  }
+  return out;
 }
 
 // ── codecs ────────────────────────────────────────────────────────────────────

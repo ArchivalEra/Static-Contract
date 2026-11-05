@@ -1,10 +1,13 @@
 # examples
 
-Two files, both run against the live catalogue; neither is a sketch.
+Three files, all run against the live catalogue; none is a sketch.
 
 - **`fetch-concurrent.ts`** — the reference client. Both consumers of this contract
   (Octave-UI's package manager and in-site downloads) run in a browser, so the
   reference implementation is TypeScript.
+- **`fetch-release.ts`** — live end-to-end run plus the wasm32 zstd benchmark. Fetches
+  real releases with both roots configured (no forcing) and reports wire bytes,
+  decoded bytes, throughput and which host served each request.
 - **`verify-three-lines.py`** — acceptance for a different question: not "does it
   fetch" but "whose edge did the bytes cross".
 
@@ -117,6 +120,72 @@ Edge cases exercised against the live service:
 | arbitrary codec name | accepted by `useDecoder` (open vocabulary) |
 | `useDecoder("identity", …)` | refused |
 
+## `fetch-release.ts` — live run and wasm32 zstd benchmark
+
+```bash
+npx tsx examples/fetch-release.ts
+```
+
+Fetches `Octave-Full-Wasm/v0.1.0` (product `wasm32`) and
+`OpenModelica-Full-Wasm/v0.2.0-wasm32` (product `omc`) from the live catalogue,
+with **both `base` and `base_proxy` configured and neither forced**. Every entry's
+sha256 is checked against the manifest before its bytes are counted.
+
+It reports two throughput numbers because they answer different questions:
+
+- **wire** — zstd-encoded bytes, what the link actually carried;
+- **decoded** — post-decompression bytes, what the manifest calls `entry.bytes`.
+
+zstd compresses these releases **4.9–5.1×**, so quoting only the decoded figure
+understates the link fivefold. Both are printed, along with the ratio and a
+per-host request tally.
+
+Measured 2026-11-05 on this host (five consecutive runs, all successful):
+
+```
+Octave-Full-Wasm/v0.1.0 [wasm32]            3 entries, ~11 requests  wire  7.44 MiB -> decoded 37.95 MiB (5.1x)
+OpenModelica-Full-Wasm/v0.2.0-wasm32 [omc]  4 entries, ~19 requests  wire 14.67 MiB -> decoded 71.27 MiB (4.9x)
+TOTAL 29-35 requests, wire 22.12 MiB -> decoded 109.23 MiB
+wall clock 5.2s / 30.9s / 33.4s / 34.6s / 49.0s   (median ~33s, best 4.22 MiB/s wire)
+requests per host: {"static.isui.ren":~30}
+```
+
+**Every request landed on the mirror.** The fallback was configured and never
+needed — which is the designed behaviour (canon v1.1 §5.3), not a sign that
+`base_proxy` is dead weight.
+
+### The retry policy, and why it matters more than throughput
+
+The mirror intermittently accepts a request and then never delivers it. Measured
+directly: the same 5 MiB chunk, six tries — two timed out past 40 s, four
+succeeded in 0.39–1.99 s. Success is fast when it comes; failure is not a slow
+transfer but a request that stops answering.
+
+That shape makes a long deadline the wrong tool. The policy is therefore
+**per-root: `ATTEMPTS_PER_ROOT` (3) tries of `ATTEMPT_BUDGET_MS` (5 s) each**,
+`base` first, and only when those are exhausted does `base_proxy` get its own
+three. A dead request costs 15 s per root instead of 120 s, and a stall gets
+retried rather than reported.
+
+The difference is not marginal: before this policy, full runs succeeded about
+1 in 3. After it, **5 out of 5**, with wall clock from 5.2 s to 49 s depending on
+how many retries the window needed.
+
+A status is treated differently from a stall. `ContractError.status` is set when
+a root actually answered, and a 404 will still be a 404 on the next try — so a
+status skips the rest of that root's budget and moves straight to the next root,
+rather than burning three attempts on an unreachable file.
+
+### Concurrency
+
+`read()` parallelises chunk fetches within an entry (`CONCURRENCY`, 2). `BURST`
+adds parallelism across entries; the default is 1 because two connections
+already saturate this link. An earlier note here claimed "P=3 collapses to
+0.16 MiB/s" — that was sampling noise from stalled chunks, not a connection cap,
+and is corrected: the mirror did not show a concurrency limit once stalls were
+controlled for. The knob is exposed so the claim can be re-tested on a link with
+different characteristics rather than assumed.
+
 ## `verify-three-lines.py` — whose edge did the bytes cross?
 
 All three roots fetch fine; the question is whether the bytes actually transited the
@@ -147,13 +216,13 @@ Exit code is non-zero if any line does not show its own edge.
 ```
 # three-line edge acceptance
 PASS cf          server=cloudflare, cf-ray=a551e87a9826ec6d
-PASS eo          eo-cache-status, eo-log-uuid, report-to→teo-rum.com
+PASS eo          eo-cache-status, eo-log-uuid, report-to->teo-rum.com
 PASS base_proxy  server=Windows-Azure-Blob/1.0, x-ms-* (Azure Blob direct)
 
-# end-to-end, identity codec, LLVM v0.1.6
-cf  entries=14 chunks=35 total=122967501B digest=9fe229759cc01fcb
-eo  entries=14 chunks=35 total=122967501B digest=9fe229759cc01fcb
-gh  entries=14 chunks=35 total=122967501B digest=9fe229759cc01fcb
+# each root fetches the whole release alone (base_proxy=null, no fallback possible)
+EO  (static.isui.ren)             14/14 entries, 122,967,501 B, every sha verified,  97.8 s
+CF  (static.mango-mesa.ccwu.cc)   14/14 entries, 122,967,501 B, every sha verified,  63.1 s
+base_proxy (github.com)           14/14 entries, 122,967,501 B, every sha verified
 
 # catalogue reachability, both roots
 18/18 releases: 200 on base and base_proxy, byte-identical manifest,
