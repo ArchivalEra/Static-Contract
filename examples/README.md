@@ -187,6 +187,13 @@ Octave-UI solved this in their `069` and offered to contribute it. The shape:
    build, not the user.
 2. `fetch(url, { cache: "no-store" })`, with a **per-document nonce** in the query
    as a second guard against an ignored `no-store` or a long CDN cache.
+
+   > **The nonce must be instance-level, not module-level.** Octave-UI's first
+   > version used a module-scope `const SESSION_NONCE = makeNonce()`; rebuilding
+   > the loader in the same process reused the same nonce, so the second layer
+   > silently degraded to "no-store only". There is **no symptom** — their
+   > "two independent loaders must have different nonces" test caught it. One
+   > document, one loader, one nonce.
 3. `sha256` the bytes before executing them; blob-import; revoke the object URL
    immediately.
 4. One module-level promise per document, so concurrent decodes share one fetch.
@@ -208,8 +215,10 @@ IndexedDB, Cache Storage, OPFS, SW precache, or `<link rel=preload>`.
   `useDecoder("zstd", await createNoPersistDecoder({ url, sha256 }))`. No new
   entry point is needed.
 
-A consumer that needs this should copy Octave-UI's `fzstdLoader.ts` (AGPL-3.0,
-offered under looser terms on request) rather than waiting for this file to grow.
+A consumer that needs this should copy Octave-UI's `fzstdLoader.ts` (AGPL-3.0)
+rather than waiting for this file to grow. Octave-UI withdrew its dual-licensing
+offer once `070` confirmed the recipe stays documentation-only: code that never
+enters this tree creates no licence propagation.
 
 ## `test/` — offline tests
 
@@ -344,6 +353,7 @@ Codec chain, same releases, measured on the same link:
 Both lines above were therefore measured over the same proxy so the comparison
 isolates the mirror, not the egress.
 
+This is a property of the path to the edge, not a defect in any one consumer.
 This is precisely why verification is **per chunk** and happens before decode:
 a truncated body is caught at the chunk boundary with a named file and a byte
 count, instead of surfacing only after nine chunks have been assembled. If every

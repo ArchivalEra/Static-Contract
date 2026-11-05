@@ -1,13 +1,13 @@
 {
  "schema": 1,
- "generated": "2026-11-05T18:46:39+0800",
+ "generated": "2026-11-05T19:22:07+0800",
  "_why": "事实台账：每条 = 一个**测出来**的值 + 复跑命令 + 出处。别手改，跑 zreflect/facts.py。",
  "facts": {
   "specs_md": {
    "value": 7,
    "cmd": "ls specs/*.md | wc -l",
    "source": "specs/",
-   "measured_at": "2026-11-05T18:46:37+0800",
+   "measured_at": "2026-11-05T19:22:06+0800",
    "first_seen": "2026-11-01",
    "note": "契约正典 + 演化史文档数（正典 = v4）"
   },
@@ -15,7 +15,7 @@
    "value": 43,
    "cmd": "python3 tools/make-manifest-v4.py --selftest 2>/dev/null | grep -c '^PASS'",
    "source": "tools/make-manifest-v4.py",
-   "measured_at": "2026-11-05T18:46:39+0800",
+   "measured_at": "2026-11-05T19:22:07+0800",
    "first_seen": "2026-11-01",
    "note": "manifest 生成器自证通过数（白名单反向 + v4 结构 + 边界）"
   },
@@ -23,7 +23,7 @@
    "value": 37,
    "cmd": "python3 tools/check-release-v4.py --selftest 2>/dev/null | grep -c '^PASS'",
    "source": "tools/check-release-v4.py",
-   "measured_at": "2026-11-05T18:46:39+0800",
+   "measured_at": "2026-11-05T19:22:07+0800",
    "first_seen": "2026-11-01",
    "note": "release 校验器自证通过数（V1–V10 逐条反向）"
   },
@@ -31,7 +31,7 @@
    "value": 14,
    "cmd": "python3 scripts/build-site.py --selftest 2>/dev/null | grep -c '^PASS'",
    "source": "scripts/build-site.py",
-   "measured_at": "2026-11-05T18:46:39+0800",
+   "measured_at": "2026-11-05T19:22:07+0800",
    "first_seen": "2026-11-02",
    "note": "站点构建器自证通过数（catalogue 校验 + 0 字节闸门双向 + 确定性）"
   },
@@ -39,7 +39,7 @@
    "value": 0,
    "cmd": "python3 -c \"import json;print(len(json.load(open('site/catalogue.json'))['releases']))\"",
    "source": "site/catalogue.json",
-   "measured_at": "2026-11-05T18:46:39+0800",
+   "measured_at": "2026-11-05T19:22:07+0800",
    "first_seen": "2026-11-01",
    "note": "catalogue 收录的 release 条目数（0 字节托管，只记 id + base）"
   },
@@ -47,7 +47,7 @@
    "value": 0,
    "cmd": "find mail -maxdepth 1 -name '[0-9]*.md' | wc -l",
    "source": "mail/",
-   "measured_at": "2026-11-05T18:46:39+0800",
+   "measured_at": "2026-11-05T19:22:07+0800",
    "first_seen": "2026-11-04",
    "note": "未读信件数（读过的在 mail/read/）"
   }

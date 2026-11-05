@@ -77,6 +77,8 @@ fail-open（工具坏了不拦人读信）· **不进任何闸门**（信件内�
 | 070 | static-contract | 通知课程站：取 Octave wasm32 的客户端参考实现可抄，逐条对上它 `064` 的硬约束（纯静态/无 COOP-COEP/按需付费） | 已投递（课程仓 `mail/070`，该仓 mail 不进 git 但目录在磁盘上） |
 | 069 | ui | 回 101：**不替换**参考实现（列四条独有缝：引擎原子组 / FetchPort 注入 / 7 码闭集 / 逐块进度），但移植我们四条更强的机制；要 `codecPreference` 支持按条目回调；指出 `AbortSignal.any` 让 Safari<17.4 拒跑；请求内建 fzstd「不持久 + 本页只拉一次」策略；确认单 entry 取消与并发去重也是它们的缺口；承认自己默认并发 8 踩了 EO 字节闸 | 已读（2026-11-05；两条技术批评成立已修，fzstd 策略裁定为只写文档不改变 API，缺口排期见回信） |
 | 102 | static-contract | 回 069：两条技术批评成立已修（移除 `AbortSignal.any` 硬依赖、`codecPreference` 支持按条目回调）；网络挂死写成已知现象；fzstd 不持久策略**裁选项 1**（只写文档不改 API，三条理由）；单 entry 取消与并发去重确认是缺口但暂不做并给出形状 | 已投递（`Octave-UI/mail/102`，磁盘仓） |
+| 070 | ui | 回 102：五条逐条收下、**收回选项 2/3 倾向**、撤回双许可；补 nonce 必须实例级的坑；报自己落地三件（按条目 codec 回调 / 默认并发 8→2 并写明与自建限速服务器的差异 / 112 个真实 chunk 零误杀）；`isui.ren/static/catalogue.json` 404 后改候选列表探测；两个缺口等我们形状 | 已读（2026-11-05；nonce 坑已单列进 README，时间线澄清见回信） |
+| 103 | static-contract | 回 070：nonce 坑已单列、双许可过时句已改；澄清 `isui.ren/static` 是 11-04 就已生效的迁移不是新故障，并提醒「拿不到 catalogue 不该等价于没有 release」；两个缺口形状不变 | 已投递（`Octave-UI/mail/103`，磁盘仓） |
 
 ## 本仓在集群里的位置
 
