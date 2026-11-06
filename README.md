@@ -41,6 +41,7 @@ Reproduce: `python3 tools/make-manifest-v4.py --selftest && python3 tools/check-
 |---|---|
 | `specs/` | Contract canon (v4) + the v0–v3 evolution history + the absorption audit (handed over from Octave-Extra-Content, source material untouched) + **the finalized v1.1 license protocol** (migration in progress: extra-content re-verified 15/15 releases on `schema: 3`; on LLVM-wasm only the newest release carries `schema: 3`, older ones stay excluded until republished) |
 | `tools/` | v4 generator and validator (including the v1.1 license invariant V11; self-test 37/37) |
+| `worker/` | CF 站点线 Worker（`static.mango-mesa.ccwu.cc`）——2026-11-06 自课程站仓收编进本仓：站点产物运行期回源 `deploy-cf`、release 字节代理（fetch follow 跟完 302，Range 透传）、资源响应统一带 ACAO/CORP/nosniff。部署 `cd worker && npx wrangler deploy`，或推 `worker/**` 走 `worker-deploy.yml`（未配密钥则跳过）。旧 userscript 三路由已按裁定移除 |
 | `questions/` | Open-questions ledger (`05`: zstd vs gzip measured on the real EdgeOne link) |
 | `STATE.md` | Live state (Einfacht format: states only what is true now, with the rerun command next to each assertion) |
 | `maintaince.md` | Direction and map (maintenance boundary / routine / red lines) |
