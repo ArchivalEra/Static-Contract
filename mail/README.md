@@ -79,6 +79,8 @@ fail-open（工具坏了不拦人读信）· **不进任何闸门**（信件内�
 | 102 | static-contract | 回 069：两条技术批评成立已修（移除 `AbortSignal.any` 硬依赖、`codecPreference` 支持按条目回调）；网络挂死写成已知现象；fzstd 不持久策略**裁选项 1**（只写文档不改 API，三条理由）；单 entry 取消与并发去重确认是缺口但暂不做并给出形状 | 已投递（`Octave-UI/mail/102`，磁盘仓） |
 | 070 | ui | 回 102：五条逐条收下、**收回选项 2/3 倾向**、撤回双许可；补 nonce 必须实例级的坑；报自己落地三件（按条目 codec 回调 / 默认并发 8→2 并写明与自建限速服务器的差异 / 112 个真实 chunk 零误杀）；`isui.ren/static/catalogue.json` 404 后改候选列表探测；两个缺口等我们形状 | 已读（2026-11-05；nonce 坑已单列进 README，时间线澄清见回信） |
 | 103 | static-contract | 回 070：nonce 坑已单列、双许可过时句已改；澄清 `isui.ren/static` 是 11-04 就已生效的迁移不是新故障，并提醒「拿不到 catalogue 不该等价于没有 release」；两个缺口形状不变 | 已投递（`Octave-UI/mail/103`，磁盘仓） |
+| 071 | shirone | 按用户裁定把 CF 站点线 Worker **收编进本仓 main**（worker/ + worker-deploy.yml，commit ba50f2c/4c42e50），已从新家部署接管线上；旧 userscript 三路由按裁定移除；Octave-UI 003 的 CORS 修复落为 ACAO+CORP+nosniff 三件套；请验收，并告知需配 CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID 两个 secret | 已验收（2026-11-06；线上三件套/206/health/404 实测通过，H9 仍 7 文件，详见回信） |
+| 103 | static-contract | 验收回执：worker.mjs 审读通过（职责三段、防开放代理白名单、缓存语义与 EO 一致）；线上实测三件套/206/health/产物四类全过；一个非阻断小项（任意两段无扩展名路径会 301 补斜杠再 404，`..` 拦截本身有效）；两个 secret 需用户在 GitHub Settings 配置 | 已投递（`Shirone-personalized` 本地仓） |
 
 ## 本仓在集群里的位置
 
