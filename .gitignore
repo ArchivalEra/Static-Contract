@@ -53,6 +53,13 @@
 !/.github/workflows/
 !/.github/workflows/*.yml
 
+# ===== CF 站点线 Worker（2026-11-06 自课程站仓收编：源码单文件，无构建产物）=====
+# ⚠️ 白名单模式下新增目录必须放行，否则文件不进 git 且"看不见"（本集群踩过的坑）
+!/worker/
+!/worker/*.mjs
+!/worker/*.toml
+!/worker/*.md
+
 # 放行整个目录（含其下所有内容）时取消注释：
 # !/src/
 # 只放行目录内部分内容时：
@@ -75,3 +82,5 @@ __pycache__/
 
 # 派生 catalogue 的实时副本（CI 写，供闸门读；不进 git）
 /site/catalogue.live.json
+# wrangler 本地缓存（deploy 时产生，含账号信息，绝不入库）
+/worker/.wrangler/

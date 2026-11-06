@@ -1,0 +1,44 @@
+name: worker-deploy
+# worker/** 变更 → 自动部署 CF 站点线 Worker（static.mango-mesa.ccwu.cc）。
+#
+# 与 sync-deploy.yml 的关系：那条管线发布**站点产物**（deploy-cf 分支），
+# Worker 运行期回源它，所以产物更新不需要部署 Worker；只有 worker/ 源码
+# 本身变化才需要这条管线。
+#
+# 密钥未配置时静默跳过（exit 0）而不是红——「没配密钥」是已知状态，
+# 不该让每次 push 都挂一条红叉把真正的故障淹没。配置方法见 worker/README.md。
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'worker/**'
+      - '.github/workflows/worker-deploy.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: worker-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 部署 CF Worker（无密钥则显式跳过）
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::notice::未配置 CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID —— Worker 部署跳过。"
+            echo "::notice::在仓库 Settings → Secrets 配好后，推 worker/** 或手动 workflow_dispatch 即自动部署。"
+            exit 0
+          fi
+          cd worker
+          npx --yes wrangler@4 deploy

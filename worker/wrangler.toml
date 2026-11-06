@@ -1,0 +1,23 @@
+# CF 站点线 Worker 的托管配置（static.mango-mesa.ccwu.cc）
+#
+# 2026-11-06 从课程站仓（S26-1_202609）的 gitignored 目录收编进本仓
+# （用户裁定：它本就是本仓自动化管线的一部分，与 deploy-eo/deploy-cf
+# 两条站点分支同属一个产地，不该寄生在别的仓里）。
+#
+# 部署：npx wrangler deploy（本目录下执行；或推 worker/** 让
+# .github/workflows/worker-deploy.yml 自动部署——需要 CLOUDFLARE_API_TOKEN
+# 与 CLOUDFLARE_ACCOUNT_ID 两个 secret，未配置时该 workflow 静默跳过）。
+#
+# 注意：worker 名字沿用 `static-host`（与收编前同一 Worker，部署即接管）。
+# 旧的 userscript 三路由（/assistant.user.js 等）**已移除**——用户裁定那条
+# 线停止维护；若从旧源码目录（课程站仓）再 deploy，会把这些路由带回来并
+# 同时丢掉 release 代理——不要那么做。
+
+name = "static-host"
+main = "worker.mjs"
+compatibility_date = "2026-10-28"
+
+# 自定义域（Cloudflare 会自动建 DNS 记录；zone: mango-mesa.ccwu.cc）
+routes = [
+	{ pattern = "static.mango-mesa.ccwu.cc", custom_domain = true }
+]
