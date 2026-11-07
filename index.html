@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+<head>
+<meta http-equiv="content-type" content="application/xhtml+xml; charset=utf-8" />
+<meta name="viewport" content="initial-scale=1" />
+<title>Static-Contract</title>
+<style>
+body { background:#fff; color:#000; font-family:arial,sans-serif; font-size:13px;
+       padding:0; margin:0; }
+a { color:#000066; text-decoration:underline; font-weight:bold; }
+code, .mono { font-family:monospace; }
+td code { font-size:92%; word-break:break-all; }
+.m { color:#555; }
+#page_center { max-width:1240px; margin:0 auto; padding:0 8px; }
+#header { text-align:center; padding-top:8px; margin-bottom:13px; }
+#header span { font-size:160%; font-weight:bold; }
+#header div { font-weight:normal; font-size:100%; margin-top:.2em; }
+.sidebar { float:left; width:170px; margin-top:1px; }
+#content { float:left; width:1000px; margin:1px 10px 0 10px; padding-bottom:1px; }
+.block { margin-bottom:9px; border:1px solid #000066; }
+.block .caption { padding:.2em 0; font-size:130%; font-weight:bold; text-align:center;
+                  background:#000066; color:#fff; }
+.block .content { font-size:110%; padding:4px 12px; }
+.menu, .submenu { padding:0; margin:0; }
+.menu li, .submenu li { list-style:none; margin-left:12px; }
+.submenu li { margin-left:8px; font-size:95%; }
+.menu a, .submenu a { text-decoration:none; }
+.menu a:hover, .submenu a:hover { text-decoration:underline; }
+table { border-collapse:collapse; width:100%; margin:.3em 0; }
+th, td { border:1px solid #000066; padding:.2em .4em; text-align:left;
+         vertical-align:top; font-size:92%; }
+th { background:#e8e8f0; }
+.dep { color:#8b0000; font-weight:bold; font-size:90%; margin-left:.4em; }
+ul.doclist { padding-left:1.4em; margin:.2em 0; }
+ul.doclist li { font-family:monospace; font-size:112%; }
+address { font-style:normal; font-size:95%; color:#333; }
+pre { font-family:monospace; background:#f4f4f8; border:1px solid #999;
+      padding:.5em; overflow-x:auto; margin:.4em 0; }
+@media (max-width:1180px) {
+  .sidebar, #content { float:none; width:auto; max-width:100%; margin:0 10px; }
+}
+</style>
+</head>
+<body>
+<div id="page_center">
+  <div id="header">
+    <span>Static-Contract</span>
+    <div>Octave cluster &middot; static distribution contract &middot; metadata site</div>
+    <div>License: <a href="https://www.gnu.org/licenses/agpl-3.0.html">AGPL-3.0</a>
+         &middot; <a href="LICENSE">full text</a></div>
+  </div>
+
+  <div class="sidebar">
+    <div class="block">
+      <div class="caption">Site</div>
+      <div class="content"><ul class="menu">
+        <li><a href="#what">What</a></li>
+        <li><a href="#catalogue">Catalogue</a>
+          <ul class="submenu"><li><a href="#excluded">Excluded</a></li></ul></li>
+        <li><a href="#consume">Consume</a></li>
+        <li><a href="#channels">Channels</a></li>
+      </ul></div>
+    </div>
+    <div class="block">
+      <div class="caption">Contract</div>
+      <div class="content"><ul class="menu">
+        <li><a href="contract/2026-10-30-release-contract-v4.md">v4 &mdash; V1&ndash;V10</a></li>
+        <li><a href="contract/2026-11-01-release-contract-v1.1-license.md">v1.1 &mdash; V11</a></li>
+      </ul></div>
+    </div>
+    <div class="block">
+      <div class="caption">Data</div>
+      <div class="content"><ul class="menu">
+        <li><a href="catalogue.json">catalogue.json</a></li>
+        <li><a href="sources.json">sources.json</a></li>
+        <li><a href="LICENSE">LICENSE</a></li>
+        <li><a href="https://github.com/ArchivalEra/Static-Contract">source</a></li>
+      </ul></div>
+    </div>
+  </div>
+
+  <div id="content">
+
+    <div class="block">
+      <div class="caption"><a name="what" style="color:#fff">What</a></div>
+      <div class="content">
+        <p><b>One release = one immutable tag = one <code>manifest.json</code> + N flat assets.</b>
+           Whitelisted names make <code>manifest.file</code> equal the real asset name;
+           clients never build names, so 404 has one meaning. Plain GET only.<br />
+           <b>apt's robustness + HTTP's simplicity.</b> Zero-byte hosting: metadata only,<br />
+           <span class="m">failures stay out of the catalogue with the reason listed.</span></p>
+      </div>
+    </div>
+
+    <div class="block">
+      <div class="caption"><a name="catalogue" style="color:#fff">Catalogue (18)</a>
+        &middot; <a name="excluded" style="color:#fff">excluded 7</a></div>
+      <div class="content">
+        <p class="m">Click an id for its <code>manifest.json</code>.
+           <a href="catalogue.json">catalogue.json</a> &mdash; machine-readable.</p>
+        <table>
+          <tr><th>id</th><th>license</th></tr>
+<tr><td><a href="https://static.isui.ren/ArchivalEra/LLVM-wasm/releases/download/v0.1.6/manifest.json"><code>LLVM-wasm/v0.1.6</code></a></td><td><a href="https://github.com/ArchivalEra/LLVM-wasm/blob/main/LICENSE" title="(Apache-2.0 WITH LLVM-exception) AND (MIT OR NCSA) AND AGPL-3.0-or-later">(Apache-2.0 WITH LLVM-exception) AND (MIT OR NCSA) AND AGPL-3.0-or-later</a></td></tr>
+<tr><td><a href="https://static.isui.ren/ArchivalEra/Octave-Extra-Content/releases/download/forge-cgi-0.1.2/manifest.json"><code>Octave-Extra-Content/forge-cgi-0.1.2</code></a></td><td><a href="https://sourceforge.net/p/octave/cgi/ci/master/tree/COPYING" title="GPL-2.0-or-later">GPL-2.0-or-later</a></td></tr>
+<tr><td><a href="https://static.isui.ren/ArchivalEra/Octave-Extra-Content/releases/download/forge-datatypes-1.4.2/manifest.json"><code>Octave-Extra-Content/forge-datatypes-1.4.2</code></a></td><td><a href="https://github.com/pr0m1th3as/datatypes/blob/master/COPYING" title="GPL-3.0-or-later">GPL-3.0-or-later</a></td></tr>
+<tr><td><a href="https://static.isui.ren/ArchivalEra/Octave-Extra-Content/releases/download/forge-geometry-4.1.0/manifest.json"><code>Octave-Extra-Content/forge-geometry-4.1.0</code></a></td><td><a href="https://sourceforge.net/p/octave/geometry/ci/default/tree/COPYING" title="GPL-3.0-or-later AND BSL-1.0">GPL-3.0-or-later AND BSL-1.0</a></td></tr>
+<tr><td><a href="https://static.isui.ren/ArchivalEra/Octave-Extra-Content/releases/download/forge-matgeom-1.2.4/manifest.json"><code>Octave-Extra-Content/forge-matgeom-1.2.4</code></a></td><td><a href="https://sourceforge.net/p/octave/matgeom/ci/master/tree/LICENSE.txt" title="BSD-2-Clause-FreeBSD">BSD-2-Clause-FreeBSD</a></td></tr>
+<tr><td><a href="https://static.isui.ren/ArchivalEra/Octave-Extra-Content/releases/download/forge-miscellaneous-1.3.3/manifest.json"><code>Octave-Extra-Content/forge-miscellaneous-1.3.3</code></a></td><td><a href="https://github.com/gnu-octave/octave-miscellaneous/blob/main/COPYING" title="GPL-3.0-or-later">GPL-3.0-or-later</a></td></tr>
+<tr><td><a href="https://static.isui.ren/ArchivalEra/Octave-Extra-Content/releases/download/forge-nan-3.7.2/manifest.json"><code>Octave-Extra-Content/forge-nan-3.7.2</code></a></td><td><a href="https://sourceforge.net/p/octave/NaN/ci/default/tree/COPYING" title="GPL-3.0-or-later">GPL-3.0-or-later</a></td></tr>
+<tr><td><a href="https://static.isui.ren/ArchivalEra/Octave-Extra-Content/releases/download/forge-optim-1.6.3/manifest.json"><code>Octave-Extra-Content/forge-optim-1.6.3</code></a></td><td><a href="https://octave.sourceforge.io/optim/" title="GPL-3.0-or-later AND BSD-3-Clause AND LicenseRef-public-domain">GPL-3.0-or-later AND BSD-3-Clause AND LicenseRef-public-domain</a></td></tr>
+<tr><td><a href="https://static.isui.ren/ArchivalEra/Octave-Extra-Content/releases/download/forge-quaternion-2.4.2/manifest.json"><code>Octave-Extra-Content/forge-quaternion-2.4.2</code></a></td><td><a href="https://sourceforge.net/p/octave/quaternion/ci/default/tree/COPYING" title="GPL-3.0-or-later">GPL-3.0-or-later</a></td></tr>
+<tr><td><a href="https://static.isui.ren/ArchivalEra/Octave-Extra-Content/releases/download/forge-splines-1.3.5/manifest.json"><code>Octave-Extra-Content/forge-splines-1.3.5</code></a></td><td><a href="https://sourceforge.net/p/octave/splines/ci/default/tree/COPYING" title="GPL-3.0-or-later AND LicenseRef-public-domain">GPL-3.0-or-later AND LicenseRef-public-domain</a></td></tr>
+<tr><td><a href="https://static.isui.ren/ArchivalEra/Octave-Extra-Content/releases/download/forge-statistics-1.7.7/manifest.json"><code>Octave-Extra-Content/forge-statistics-1.7.7</code></a></td><td><a href="https://github.com/gnu-octave/statistics/blob/master/COPYING" title="GPL-3.0-or-later">GPL-3.0-or-later</a></td></tr>
+<tr><td><a href="https://static.isui.ren/ArchivalEra/Octave-Extra-Content/releases/download/forge-struct-1.0.18/manifest.json"><code>Octave-Extra-Content/forge-struct-1.0.18</code></a></td><td><a href="https://sourceforge.net/p/octave/struct/ci/default/tree/COPYING" title="GPL-3.0-or-later">GPL-3.0-or-later</a></td></tr>
+<tr><td><a href="https://static.isui.ren/ArchivalEra/Octave-Extra-Content/releases/download/forge-symbolic-3.2.2/manifest.json"><code>Octave-Extra-Content/forge-symbolic-3.2.2</code></a></td><td><a href="https://github.com/gnu-octave/symbolic/blob/main/COPYING" title="GPL-3.0-or-later">GPL-3.0-or-later</a></td></tr>
+<tr><td><a href="https://static.isui.ren/ArchivalEra/Octave-Extra-Content/releases/download/forge-tsa-4.6.3/manifest.json"><code>Octave-Extra-Content/forge-tsa-4.6.3</code></a></td><td><a href="https://sourceforge.net/p/octave/tsa/ci/default/tree/COPYING" title="GPL-3.0-or-later">GPL-3.0-or-later</a></td></tr>
+<tr><td><a href="https://static.isui.ren/ArchivalEra/Octave-Extra-Content/releases/download/supply-pyodide-314.0.7/manifest.json"><code>Octave-Extra-Content/supply-pyodide-314.0.7</code></a></td><td><a href="https://github.com/pyodide/pyodide/blob/main/LICENSE" title="MPL-2.0 AND BSD-3-Clause">MPL-2.0 AND BSD-3-Clause</a></td></tr>
+<tr><td><a href="https://static.isui.ren/ArchivalEra/Octave-Full-Wasm/releases/download/octave-full-wasm-v0.1.0/manifest.json"><code>Octave-Full-Wasm/v0.1.0</code></a></td><td><a href="https://github.com/ArchivalEra/Octave-Full-Wasm/blob/master/LICENSE" title="AGPL-3.0-or-later">AGPL-3.0-or-later</a></td></tr>
+<tr><td><a href="https://static.isui.ren/ArchivalEra/OpenModelica-Full-Wasm/releases/download/msl-4.1.0-maint.om/manifest.json"><code>OpenModelica-Full-Wasm/msl-4.1.0-maint.om</code></a></td><td><a href="https://github.com/modelica/ModelicaStandardLibrary/blob/master/LICENSE" title="BSD-3-Clause">BSD-3-Clause</a></td></tr>
+<tr><td><a href="https://static.isui.ren/ArchivalEra/OpenModelica-Full-Wasm/releases/download/v0.2.0-wasm32/manifest.json"><code>OpenModelica-Full-Wasm/v0.2.0-wasm32</code></a></td><td><a href="https://github.com/ArchivalEra/OpenModelica-Full-Wasm/blob/master/LICENSE" title="AGPL-3.0-or-later">AGPL-3.0-or-later</a></td></tr>
+        </table>
+        <table>
+          <tr><th>excluded: repo</th><th>tag</th><th>reason</th></tr>
+<tr><td><code>ArchivalEra/LLVM-wasm</code></td><td><code>v0.1.0</code></td><td class="mono">schema not accepted (client accepts 2/3)</td></tr>
+<tr><td><code>ArchivalEra/LLVM-wasm</code></td><td><code>v0.1.1</code></td><td class="mono">schema not accepted (client accepts 2/3)</td></tr>
+<tr><td><code>ArchivalEra/LLVM-wasm</code></td><td><code>v0.1.2</code></td><td class="mono">schema not accepted (client accepts 2/3)</td></tr>
+<tr><td><code>ArchivalEra/LLVM-wasm</code></td><td><code>v0.1.3</code></td><td class="mono">schema not accepted (client accepts 2/3)</td></tr>
+<tr><td><code>ArchivalEra/LLVM-wasm</code></td><td><code>v0.1.4</code></td><td class="mono">schema not accepted (client accepts 2/3)</td></tr>
+<tr><td><code>ArchivalEra/Octave-Full-Wasm</code></td><td><code>wasm32-11.3.0-1ed3e528</code></td><td class="mono">missing manifest.json</td></tr>
+<tr><td><code>ArchivalEra/OpenModelica-Full-Wasm</code></td><td><code>v0.1.0-wasm32</code></td><td class="mono">missing manifest.json</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="block">
+      <div class="caption"><a name="docs" style="color:#fff">Contract</a></div>
+      <div class="content">
+        <p><b>Two documents.</b>
+           <a href="contract/2026-10-30-release-contract-v4.md">v4</a> defines the
+           manifest structure and invariants V1&ndash;V10.
+           <a href="contract/2026-11-01-release-contract-v1.1-license.md">v1.1</a> defines
+           the license field, invariant V11, and <code>schema: 3</code>.
+           Earlier drafts are superseded and are not published here.
+           <b>Not declared stable.</b></p>
+      </div>
+    </div>
+
+    <div class="block">
+      <div class="caption"><a name="consume" style="color:#fff">Consume</a></div>
+      <div class="content">
+<pre>GET &lt;base&gt;/manifest.json      # the only URL you need
+name = chunks[i].file         # verbatim, never build it
+GET &lt;base&gt;/&lt;name&gt;             # plain GET
+check bytes + sha256 &rarr; decode &rarr; concat &rarr; check entry.sha256</pre>
+        <p class="m">No Range, no conditional requests, no custom headers.</p>
+      </div>
+    </div>
+
+    <div class="block">
+      <div class="caption"><a name="channels" style="color:#fff">Channels (same artifact)</a></div>
+      <div class="content">
+        <table>
+          <tr><th>channel</th><th>URL</th></tr>
+<tr><td>edgeone</td><td class="mono"><a href="https://static.isui.ren/">static.isui.ren</a></td></tr>
+<tr><td>cloudflare</td><td class="mono"><a href="https://static.mango-mesa.ccwu.cc/">static.mango-mesa.ccwu.cc</a></td></tr>
+        </table>
+        <p class="m">Same bytes, verifiable by the fingerprint below.</p>
+      </div>
+    </div>
+
+    <div class="block">
+      <div class="caption">Info</div>
+      <div class="content">
+        <address>
+          <b>&copy; 2026 ArchivalEra. All rights reserved.</b><br />
+          This site is <a href="https://www.gnu.org/licenses/agpl-3.0.html">AGPL-3.0</a>
+          &mdash; releases are not; each follows its publisher's terms
+          (<a href="catalogue.json">catalogue.json</a>).<br />
+          <b>Design homage:</b> this page's layout and colour scheme
+          (<span class="mono">#000066</span> on white, the boxed caption headings,
+          the fine-ruled tables, the XHTML&nbsp;1.1 skeleton) are modelled on
+          <a href="https://he.net/">Hurricane Electric Internet Services</a>
+          &mdash; a deliberate tribute to a site that has kept the same plain,
+          legible shape for decades. All content here is ours; only the look is borrowed.<br />
+          verified_at: <span class="mono">2026-11-07T16:30:16Z</span> &middot; STATIC-CONTRACT-BUILD 2d3689addf7ebbae
+        </address>
+      </div>
+    </div>
+
+  </div>
+</div>
+</body>
+</html>

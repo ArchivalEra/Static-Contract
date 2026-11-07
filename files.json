@@ -1,0 +1,12 @@
+{
+ "note": "Exact artifact file list. Mirrors MUST copy exactly these paths -- do not hand-maintain a file list.",
+ "count": 6,
+ "files": [
+  "LICENSE",
+  "catalogue.json",
+  "contract/2026-10-30-release-contract-v4.md",
+  "contract/2026-11-01-release-contract-v1.1-license.md",
+  "index.html",
+  "sources.json"
+ ]
+}
