@@ -39,17 +39,22 @@ import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from gate import meta, module_meta, repo                   # noqa: E402
+from i18n import M                                         # noqa: E402
 
 GATE = meta("站点语言闸门",
             "HTML 产物必须全英文；废弃契约必须在页面与文档里被标出",
             runs_at="commit")
 
-REPO = repo("")
-SPECS = os.path.join(REPO, "specs")
+def REPO():                      # 调用点即时求值（新版 snapshot 闸门同款理由）
+    return repo("")
+def SPECS():                     # 同上，调用点即时求值
+    return os.path.join(REPO(), "specs")
 # 真实派生 catalogue（CI 会写到这里；本地有则用之）
-CAT_ABS = os.path.join(REPO, "site", "catalogue.live.json")
-if not os.path.exists(CAT_ABS):
-    CAT_ABS = os.environ.get("SC_CATALOGUE", "")
+def CAT_ABS():                   # 派生件优先，否则 SC_CATALOGUE 覆盖
+    derived = os.path.join(REPO(), "site", "catalogue.live.json")
+    if os.path.exists(derived):
+        return derived
+    return os.environ.get("SC_CATALOGUE", "")
 
 # CJK 区间：中日韩统一表意文字 + 扩展 A + 兼容表意 + 全角标点/符号
 CJK = re.compile(r"[\u3000-\u303f\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff"
@@ -71,8 +76,9 @@ def _build_to(tmp, cat=None):
         env["CATALOGUE_DERIVED"] = cat
     else:
         env.pop("CATALOGUE_DERIVED", None)
-    r = subprocess.run([sys.executable, os.path.join(REPO, "scripts", "build-site.py"),
-                        "--out", tmp], capture_output=True, text=True, env=env, cwd=REPO)
+    r = subprocess.run([sys.executable, os.path.join(REPO(), "scripts", "build-site.py"),
+                        "--out", tmp], capture_output=True, text=True,
+                       encoding="utf-8", env=env, cwd=REPO())
     return r.returncode, r.stdout + r.stderr
 
 
@@ -132,9 +138,9 @@ def check_publish_surface(dist_dir):
     missing = sorted(EXPECTED_ARTIFACT - actual)
     probs = []
     if extra:
-        probs.append("H9 发布了不该发布的文件: %s" % ", ".join(extra[:8]))
+        probs.append(M("sitelang.h9_extra", files=", ".join(extra[:8])))
     if missing:
-        probs.append("H9 缺少必需文件: %s" % ", ".join(missing))
+        probs.append(M("sitelang.h9_missing", files=", ".join(missing)))
     return probs
 
 
@@ -151,7 +157,7 @@ def check_published_md(dist_dir):
             if f.endswith(".md"):
                 mds.append(os.path.join(root, f))
     if not mds:
-        return ["H8 产物里没有 .md —— 未查不是通过"]
+        return [M("sitelang.h8_no_md")]
     for p in sorted(mds):
         rel = os.path.relpath(p, dist_dir)
         t = open(p, encoding="utf-8", errors="replace").read()
@@ -168,7 +174,7 @@ def check_published_md(dist_dir):
         em = len(EMOJI.findall(t))
         nu = len(CIRCLED.findall(t))
         if cjk or em or nu:
-            probs.append("H8 %s 含 CJK=%d emoji=%d 圈号=%d" % (rel, cjk, em, nu))
+            probs.append(M("sitelang.h8_cjk", rel=rel, cjk=cjk, em=em, nu=nu))
     return probs
 
 
@@ -186,7 +192,7 @@ def check_links(html, dist_dir):
     for l in links:
         p = os.path.join(dist_dir, l)
         if not os.path.exists(p):
-            probs.append("H5 死链: %s（产物里没有这个文件）" % l)
+            probs.append(M("sitelang.h5_dead", href=l))
     # 反向：产物里有文件但页面没链到（提示，不算失败）——只在 verbosely 打印
     return probs, len(links)
 
@@ -240,11 +246,11 @@ def check_channels_online(channels, links, attempts=2):
     for ch in channels:
         name, base = ch.get("name", "?"), ch.get("base", "")
         if not base:
-            probs.append("H6 通道 %s 缺 base" % name)
+            probs.append(M("sitelang.h6_missing_base", name=name))
             continue
         fb_sha, fb_code = probe_fallback(base)
         if fb_sha is None:
-            probs.append("H6 %s 兜底页取不到（%s）—— 无法判定死链" % (name, fb_code))
+            probs.append(M("sitelang.h6_no_fallback", name=name, code=fb_code))
             continue
         dead, unreachable = [], []
         for l in links:
@@ -270,18 +276,17 @@ def check_channels_online(channels, links, attempts=2):
         # 我发不出去只会让问题叠加（我的新产物上不去，他们的通道还没人修）。
         # 但**必须报告**：静默略过等于把别人的故障藏起来。
         owned = bool(ch.get("owned"))
-        tag = "" if owned else "（外通道，不阻塞发布）"
+        tag = "" if owned else M("sitelang.h6_external_tag")
         if dead:
-            msg = ("H6 %s 死链 %d 条（返回兜底页/404）: %s"
-                   % (name, len(dead), ", ".join(dead[:6])))
+            msg = M("sitelang.h6_dead", name=name, count=len(dead),
+                    files=", ".join(dead[:6]))
             if owned:
                 probs.append(msg)
             else:
                 print("⚠ %s%s" % (msg, tag))
         if unreachable:
-            msg = ("H6 %s 不可达 %d 条（不可达不是「没问题」）: %s"
-                   % (name, len(unreachable),
-                      ", ".join("%s(%s)" % x for x in unreachable[:6])))
+            msg = M("sitelang.h6_unreachable", name=name, count=len(unreachable),
+                    files=", ".join("%s(%s)" % x for x in unreachable[:6]))
             if owned:
                 probs.append(msg)
             else:
@@ -304,14 +309,14 @@ def check_catalogue_bases(cat_path, attempts=2):
     import json
     probs = []
     if not os.path.exists(cat_path):
-        return ["H7 catalogue 不存在"]
+        return [M("sitelang.h7_missing")]
     try:
         d = json.load(open(cat_path, encoding="utf-8"))
     except ValueError as e:
-        return ["H7 catalogue 非法 JSON: %s" % e]
+        return [M("sitelang.h7_bad_json", error=e)]
     rel = d.get("releases") or []
     if not rel:
-        return ["H7 catalogue 没有 releases —— 未查不是通过"]
+        return [M("sitelang.h7_no_releases")]
     dead = []
     for r in rel:
         u = (r.get("base") or "") + "manifest.json"
@@ -326,9 +331,8 @@ def check_catalogue_bases(cat_path, attempts=2):
         if not (isinstance(code, int) and code == 200):
             dead.append((r.get("id", "?"), code))
     if dead:
-        probs.append("H7 %d/%d 条 base 取不到 manifest（catalogue 指向已删除的 tag？）: %s"
-                     % (len(dead), len(rel),
-                        ", ".join("%s(%s)" % x for x in dead[:5])))
+        probs.append(M("sitelang.h7_dead_bases", dead=len(dead), total=len(rel),
+                       files=", ".join("%s(%s)" % x for x in dead[:5])))
     return probs
 
 
@@ -342,7 +346,7 @@ def check_specs_marked(specs_dir):
             continue
         head = open(os.path.join(specs_dir, name), encoding="utf-8").read(800)
         if not DEPRECATED_MARK.search(head):
-            probs.append("%s 未标 DEPRECATED（非权威文档必须有横幅）" % name)
+            probs.append(M("sitelang.h3_missing_banner", name=name))
     return probs
 
 
@@ -358,7 +362,7 @@ def check_page_marks_deprecated(html, specs_dir):
         name = m.group(1)
         path = os.path.join(specs_dir, name)
         if not os.path.exists(path):
-            probs.append("页面链接的 contract/%s 不存在" % name)
+            probs.append(M("sitelang.h3_page_link_missing", href=name))
             continue
         head = open(path, encoding="utf-8").read(800)
         if "DEPRECATED" not in head:
@@ -367,7 +371,7 @@ def check_page_marks_deprecated(html, specs_dir):
         line_end = html.find("</li>", m.start())
         line = html[m.start():line_end if line_end > 0 else len(html)]
         if "DEPRECATED" not in line:
-            probs.append("contract/%s 已完全废弃，但页面上没标出来" % name)
+            probs.append(M("sitelang.h3_deprecated_unmarked", href=name))
     return probs
 
 
@@ -381,35 +385,35 @@ def check_catalogue_en(cat_path):
     import json
     probs = []
     if not os.path.exists(cat_path):
-        return ["H4 catalogue 不存在：%s" % cat_path]
+        return [M("sitelang.h4_missing", cat=cat_path)]
     try:
         d = json.load(open(cat_path, encoding="utf-8"))
     except ValueError as e:
-        return ["H4 catalogue 非法 JSON: %s" % e]
+        return [M("sitelang.h4_bad_json", error=e)]
     # ★ 整份 catalogue 的**对外字段**不得含 CJK（note / id / license / excluded）
     #   中文 reasons 是给维护者的内部诊断，**允许**留在 catalogue 里；
     #   但对外可见的部分（note / reasons_en / license / id）必须全英文。
     note = d.get("note")
     if isinstance(note, str) and CJK.search(note):
-        probs.append("H4 catalogue.note 含中文（这是公开发布字段）")
+        probs.append(M("sitelang.h4_note_cjk"))
     for x in d.get("excluded") or []:
         if not isinstance(x, dict):
             continue
         # 协议 §5.1 G7：excluded 只为「写原因」。键名 `reason`（单数、英文字符串）。
         if not isinstance(x.get("reason"), str) or not x["reason"].strip():
-            probs.append("H4 excluded %s/%s 缺 reason" % (x.get("repo"), x.get("tag")))
+            probs.append(M("sitelang.h4_excluded_no_reason", repo=x.get("repo"), tag=x.get("tag")))
         elif CJK.search(x["reason"]):
-            probs.append("H4 excluded %s/%s 的 reason 含中文" % (x.get("repo"), x.get("tag")))
+            probs.append(M("sitelang.h4_excluded_reason_cjk", repo=x.get("repo"), tag=x.get("tag")))
     for r in d.get("releases") or []:
         if not isinstance(r, dict):
             continue
         if CJK.search(r.get("id") or ""):
-            probs.append("H4 release id 含中文: %r" % r.get("id"))
+            probs.append(M("sitelang.h4_id_cjk", rid=repr(r.get("id"))))
         lic = r.get("license")
         if isinstance(lic, dict):
             for k in ("id", "url"):
                 if CJK.search(lic.get(k) or ""):
-                    probs.append("H4 %s 的 license.%s 含中文" % (r.get("id"), k))
+                    probs.append(M("sitelang.h4_license_cjk", name=repr(r.get("id")), field=k))
     return probs
 
 
@@ -421,54 +425,56 @@ def main():
     tmp = tempfile.mkdtemp(prefix="sc-site-")
     try:
         dist_dir = os.path.join(tmp, "dist")
-        rc, log = _build_to(dist_dir, cat=CAT_ABS)
+        rc, log = _build_to(dist_dir, cat=CAT_ABS())
         if rc != 0:
-            probs.append("构建失败（rc=%d）：%s" % (rc, log.strip().splitlines()[-1:]))
+            probs.append(M("sitelang.build_failed", rc=rc, log=str(log.strip().splitlines()[-1:])))
             html = ""
         else:
             html = open(os.path.join(dist_dir, "index.html"), encoding="utf-8").read()
             hits = check_html_lang(html)
             if hits:
-                probs.append("H1 index.html 含 %d 个 CJK 字符，例：%r"
-                             % (len(CJK.findall(html)), hits[:2]))
+                probs.append(M("sitelang.h1_cjk", n=len(CJK.findall(html)),
+                               ex=repr(hits[:2])))
             # ⚠️ H5 必须在 tmp 还在时跑 —— 曾放到 finally 之后，
             #    产物已删 ⇒ 15 条全部误报"死链"（判据对，时序错）。
             link_probs, n_links = check_links(html, dist_dir)
             probs += link_probs
-            print("H5：检查了 %d 个产物内相对链接" % n_links)
+            print(M("sitelang.h5_summary", total=n_links))
             h8 = check_published_md(dist_dir)
             probs += h8
             h9 = check_publish_surface(dist_dir)
             probs += h9
-            print("H8 发布 md 语言: %s | H9 发布面: %s"
-                  % ("全部英文" if not h8 else "%d 个不合格" % len(h8),
-                     "恰好是货架+契约" if not h9 else "越界"))
+            print(M("sitelang.h8_h9_summary",
+                   h8=M("sitelang.h8_all_en") if not h8
+                      else M("sitelang.h8_failures", count=len(h8)),
+                   h9=M("sitelang.h9_exact") if not h9
+                      else M("sitelang.h9_out_of_bounds")))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
-    probs += check_specs_marked(SPECS)
+    probs += check_specs_marked(SPECS())
     # ⚠️ 缺 catalogue 必须红，不许静默跳过。
     # 「没跑 ≠ 通过」—— 线上事故就是闸门查不到数据而报绿。
-    if CAT_ABS:
-        probs += check_catalogue_en(CAT_ABS)
+    if CAT_ABS():
+        probs += check_catalogue_en(CAT_ABS())
     else:
         # 本地 pre-commit 没有派生件时：查**兜底源**（它也在产物里，必须英文）。
         # CI 里两次都能查（先派生再 gate），所以 CI 不会走到这里。
         # 「没跑 ≠ 通过」：这里查的是兜底源，不是跳过。
-        fallback = os.path.join(REPO, "site", "catalogue.json")
+        fallback = os.path.join(REPO(), "site", "catalogue.json")
         if os.path.exists(fallback):
             probs += check_catalogue_en(fallback)
-            print("H4：用兜底源 site/catalogue.json（CI 会用派生件）")
+            print(M("sitelang.h4_fallback_used"))
         else:
-            probs.append("H4 既无派生件也无兜底源 —— 未查不是通过")
+            probs.append(M("sitelang.h4_no_source"))
     if html:
-        probs += check_page_marks_deprecated(html, SPECS)
+        probs += check_page_marks_deprecated(html, SPECS())
 
     # H6 在线探测（内容指纹判定）。CI 用 --online 显式开启；
     # 本地默认跳过并**明说**（跳过不是通过）。
     if "--online" in sys.argv:
         try:
-            cdoc = json.load(open(os.path.join(REPO, "site", "channels.json"),
+            cdoc = json.load(open(os.path.join(REPO(), "site", "channels.json"),
                                   encoding="utf-8"))
             chans = cdoc.get("channels") or []
             # 矩阵模式下每个 job 只验自己那条站点线（CI 注入 SC_CHANNELS_ONLY）。
@@ -508,20 +514,20 @@ def main():
             # 本地无清单时回落到 HTML 链接（并明说覆盖面变窄）
             rel = sorted({m for m in re.findall(r'href="([^"#]+)"', html)
                           if not m.startswith(("http://", "https://", "mailto:", "#"))})
-            print("H6：无 files.json 清单，回落到 HTML 链接（覆盖面变窄，不含未引用产物）")
+            print(M("sitelang.h6_no_files_json"))
         for k, v in rel_by_chan.items():
-            print("H6 %s: files.json 列出 %d 个文件" % (k, len(v)))
-        if CAT_ABS:
-            h7 = check_catalogue_bases(CAT_ABS)
+            print(M("sitelang.h6_files_json", name=k, count=len(v)))
+        if CAT_ABS():
+            h7 = check_catalogue_bases(CAT_ABS())
             probs += h7
-            print("H7 catalogue base 可达性: %s" % ("全部可达" if not h7 else h7[0][:80]))
+            print(M("sitelang.h7_reachability", detail=M("sitelang.h7_all_reachable") if not h7 else h7[0][:80]))
         if chans and rel:
             # 逐通道用各自的清单：通道自己声明有哪些文件，就只查这些。
             o_probs, stats = [], {}
             for ch in chans:
                 own = rel_by_chan.get(ch.get("name")) or []
                 if not own:
-                    print("⚠ H6 %s 无 files.json 清单 —— 跳过（未查不是通过）" % ch.get("name"))
+                    print(M("sitelang.h6_skip_no_files_json", name=ch.get("name")))
                     continue
                 p_, st_ = check_channels_online([ch], own)
                 o_probs += p_
@@ -531,14 +537,14 @@ def main():
                 print("H6 %s: checked=%d dead=%d unreachable=%d"
                       % (k, v["checked"], v["dead"], v["unreachable"]))
     else:
-        print("H6：未在线探测（需 --online）—— 跳过不是通过")
+        print(M("sitelang.h6_not_online"))
 
     for x in probs:
         print("· %s" % x, file=sys.stderr)
     if probs:
-        print("站点语言闸门：%d 个问题" % len(probs), file=sys.stderr)
+        print(M("sitelang.summary_problems", count=len(probs)), file=sys.stderr)
         return 1
-    print("站点语言闸门：OK（HTML 全英文 / 废弃契约已标 / catalogue 英文 / 链接完整）")
+    print(M("sitelang.summary_ok"))
     return 0
 
 
@@ -548,4 +554,6 @@ MODULE = module_meta("站点语言闸门",
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    from gate import activate_or_fatal
+    _rc = activate_or_fatal()
+    sys.exit(_rc or main())

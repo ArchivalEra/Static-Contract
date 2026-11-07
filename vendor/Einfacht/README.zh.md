@@ -45,7 +45,9 @@
 
 | 部件 | 文件 | 它挡住什么 |
 |---|---|---|
-| **闸门平台** | `zreflect/gate.py` | 检查器静默变绿 —— 也是 **rc 契约的唯一产地**：`off()`（0，打 `OFF:` 机器标记）/ `fatal()`（2，配置坏 ≠ 发现问题）/ `load_spec()` / `finish()`（1 vs 0）收编整条闸门生命周期，13 道闸门不再手抄 run() 尾巴（此前手抄出三派漂移：stdout 对 stderr、标题先后、退出码各异）。`selftest()` 现在**拒收空用例清单**（0/0 洞 —— grep 曾照样认「0 PASS / 0 FAIL」）；`main_selftest_or()` 是唯一的 `__main__` 尾巴；`meta()` 是名录解析的声明行，`run_phase()` 是**执行面**：跑一个相位的闸门并聚合 `ran / off / failed` —— 「全绿」不再把「没跑」算进去（本仓曾有 7/13 道 off）。**off 是独立状态，不是通过** |
+| **闸门平台** | `zreflect/gate.py` | 检查器静默变绿 —— 也是 **rc 契约的唯一产地**：`off()`（0，打 `OFF:` 机器标记）/ `fatal()`（2，配置坏 ≠ 发现问题）/ `load_spec()` / `finish()`（1 vs 0）收编整条闸门生命周期，每道闸门不再手抄 run() 尾巴（此前手抄出三派漂移：stdout 对 stderr、标题先后、退出码各异）。`selftest()` 现在**拒收空用例清单**（0/0 洞 —— grep 曾照样认「0 PASS / 0 FAIL」）；`main_selftest_or()` 是唯一的 `__main__` 尾巴；`meta()` 是名录解析的声明行，`run_phase()` 是**执行面**：跑一个相位的闸门并聚合 `ran / off / failed` —— 「全绿」不再把「没跑」算进去（本仓曾有过半闸门 off 而自称全绿）。**off 是独立状态，不是通过** —— 且 **off 必须带理由**：会调 `off()` 的闸门必须在 `meta(…)` 声明行里写 `off_reason=`（≥8 字，与 `PINNED:` 同一条纪律）。`registry.off_reason_problems()` 三向检查：会 off 却没理由 ⇒ 红；理由太短 ⇒ 红；**声明了理由却从不调 `off()` ⇒ 红**（写回去的谎）；且 **理由里点名的文件必须真的不存在** —— 若 `off_reason` 声称「本仓没有 `ab.json`」而那个文件存在，理由已失效 ⇒ 红（`registry.off_reason_stale`），这样 off 才不会变成永久免死金牌。查文件时**两个合法落点都看**（仓根与 `reflect-hooks/`，与 `einfacht-env.sh` 同一口径）—— 只查仓根会漏掉真住在 `reflect-hooks/` 的 `Einfacht.env`。**工具自己的 `zreflect/` 只有一个产地**：`gate.zdir()`（及其上一级 `gate.tool_repo()`）。`knobs._zdir()` / `registry._zdir()` / i18n 的工具目录全部委托给它 —— 此前三处各算一遍 `dirname(abspath(__file__))`，只在巧合下同值、改任一处就会分裂。`registry.path_rule_problems()` 抓任何再算一遍的函数。**`never_falsifiable()` 现在有自己的自证** —— 它是纪律 4（恒真断言检测）背后的守卫，此前**零覆盖**：它一瞎，所有断言都会静默失去牙，那是比「某道闸门没跑」更深一层的假绿。现在五个方向都有断言（`or True` / `and False` / `x == x` 必须抓；真断言**不许**抓；读不到源码 ⇒ 不猜），并写明三条诚实边界：抓不到更隐蔽的恒真；**「委托」只在 lambda 体是单次 `Call` 时才报**（`Compare` 包着 helper 调用会溜过去 —— 放宽判据会误伤复合断言，所以选择明说缺口）；源码读不到时不猜（`python -c` 里的 lambda）。理由渲染进 AUTO:GATES 块，作为**声明**列 —— 不是运行时状态（那会让块每次运行都变、不收敛；此刻谁 off 要看 `registry --run <相位>`） |
+| **语言核心**（可插拔） | `zreflect/i18n.py` + `zreflect/lang/` | **本体不发任何自然语言**。拉下套件后你自己挑语言包（`zh` / `en` / …），也可以一个都不挑——不设时每条消息渲染成 `code(key='py_lines', actual=6180, expected=6014)`：结构化、机器可解析、没有句子。**中文不是源语言**，只是又一个可选包（issue #26）。`M(code, **human_params)` 构造每条消息——参数是**完整英文单词**（`key`/`actual`/`expected`/`threshold`，不是 `k`/`got`/`want`），值走 `repr`（自动处理引号嵌套）并在 40 字符处截断。`Message` 是 **`str` 子类**，所以 `if problems` / `len(...)` / `"  · " + p` 全部零改动继续工作；`.code` / `.params` 是新面。语言包形状：`lang/<lang>.json` 或 `lang/<lang>/*.json`（按闸门命名空间分文件 —— 并行开发不互相覆盖）。**机器契约结构上不可译**：`OFF:` / `FATAL:` / `SKIP:` / `DOWN:` / `=== N PASS / M FAIL ===` 在发射点用字面量，包里的值若**看起来像**这种行会在装载时被拒。包不在 ⇒ FATAL，绝不静默回落中文。**自证夹具不许带中文字符串字面量** —— 夹具会进扫描面，必须用码点构造（`chr(CJK_LO)` / `_cj(n)`）或用英文样例；`_cases()` 里仅有的两个合法中文位置是**自证标签**（1C：id + 可选中文括注）与 **docstring**（`check_i18n._fixture_literal_problems()`，同一个错犯三次之后补上的判据） |
+| **语言覆盖闸门**（可插拔） | `zreflect/check_i18n.py` | 把「本体零语言」从口号变成可判定的判据：**本体里任何裸中文文本都是问题**——消息必须走 `M(<字面量 code>, **params)`，自证标签必须是点分 id。**声明式豁免**：`GATE = meta(name, desc)` 声明数据、`re.compile(...)` 匹配器数据、自证的**夹具源码样例**、`i18n.py` 自身的装载错误（循环依赖）、以及 **AUTO 机器块**（PINNED）。没有它，语言包可能只覆盖 90% 而没人知道——本闸门把剩余 325 条报到 0 |
 | **逐字执行器** | `zreflect/runner.py` | 「逐字跑命令 + 裸值判 stdout」的**公共 seam**（`run_cmd` / `quote` / 超时）—— 复跑闸门与 world 闸门是它的两个 adapter（两个 adapter = 真实 seam；此前住在 `check_facts_replay` 的私有区） |
 | **旋钮登记** | `zreflect/knobs.py` | 「旋钮」没有 module 的病：读取散在各闸门、声明活在 docstring、名册靠文本扫描猜（收编过**幻影旋钮** —— 配了静默无效）。一份名册（名字 → 种类/默认值/语义），**登记才算数**；外加自洽性判据（扫描面幻影 / README 幻影 / 声明旋钮 ⊆ 实读 / 登记表 ⊆ README 配置表）—— 全部**与任何 env 载体无关**（曾被焊在载体开关之后、从未执行） |
 | **发现式名录** | `zreflect/registry.py` | 闸门的**集合**是发现式的，**叙述**却是手写的 —— 手写叙述会漂（STATE.md 写「十道」时实际十三道；红名单六道里只点了四道）。闸门自声明（`GATE = gate.meta(…)`，ast 解析、不 import）；平台模块也是（`MODULE = module_meta(…)`，C5）。registry 派生：**执行清单**（`runnable(相位)` —— 唯一产地，hooks/CI/runner 读它而非 glob `check_*.py`）、叙述（**AUTO:GATES** 机器块）、红名单、自证名录。`runs_at`（C1）是声明字段、不是命名意外：`doctor` 是相位 `start-of-work` 的闸门 |
@@ -117,6 +119,27 @@
   **幻影旋钮**会报）、`registry.py`（闸门自声明；发现式名录渲染 **AUTO:GATES** 机器块并
   派生红名单，那份已经漂过的手写「十道闸门」清单退役）、`guard.py`（台账写盘守卫的
   决策，与执行分离 —— 真正拦住写盘的路径有自证；本仓出过一条从落地就死了的守卫）。
+
+**再深化（2026-11-02）：依赖链与声明。**又发现两处从没被证明的地方：
+
+- `living.living_lines()` 决定**哪些行算活状态**，而 `check_stale` / `check_retractions`
+  **消费它** —— 它此前**零断言**。若它切错了文档段，那两道闸门会失去全部判据，**而它们
+  各自的自证照样绿**。现在七条断言覆盖它的判定分支（编号历史段 / 无编号默认从严 /
+  附录不扫 / 切段正确）外加 `collect.py` 的 `parse_prev_values` 与 `unavailable`。
+- **`selftest=False` 不等于「没有自证」** —— 它表示「没有 `--selftest` 入口」（这些模块是
+  纯契约 / 纯帮手，塞 CLI 入口会与角色打架）。它们的逻辑**有**断言，住在
+  `registry._cases()`，而且模块描述必须说明这一点
+  （`registry.selftest_false_modules_state_where_selftest_lives`，发现式：不写名单）。
+  只写「无独立自证」的描述是免责声明，不是事实。
+
+**依赖链现在是机械扫描的。** `living_lines()` 不是孤例：系统扫描又查出**四条**平台函数
+被闸门消费却自身零断言（`gate.guard_nonempty` / `gate.load_spec` / `ledger.value_of` /
+`runner.default_timeout`），各自补了一条；`registry.dependency_coverage_problems()`
+（C4 对账⑨）把它钉住 —— 发现式：从 `check_*.py` / `doctor.py` 的 AST 读「谁消费谁」，
+再从各 `_cases()` **及其调用的 helper** 里的 Load 名字读「谁被断言」。框架 API 按广度
+排除（≥3 个闸门共用 ⇒ 不要求自测），所以 `gate.meta` / `main_selftest_or` / `i18n.M`
+不会被迫自举。**被消费但没被测的函数是哑火环节**：它判错，消费它的闸门失去判据，
+而那道闸门自己的自证照样通过。
 
 教训就是本仓整个立身的那一条：**叙述和数字一样会漂。** 闸门的**集合**是发现式的，
 但「有几道、都是谁」是手写散文 —— 而且写错了。现在它从 runner 读的同一份声明行派生。
@@ -274,7 +297,7 @@ HISTORY §5.86/§5.83）：重启杀掉验收站点与
 pre-commit 频率错、还拖慢每次提交（所以文件名
 是 `doctor.py` 而不是 `check_doctor.py` ——
 `for g in zreflect/check_*.py` 扫不到它；
-`gates-selftest.sh` 点名一次证明它能红，与
+`zreflect/harness.py` 点名一次证明它能红，与
 env 插件同体例）。活性是瞬时事实 ⇒ **不进台账
 replay**，每次开工真跑即可。边界明说：doctor
 只探**活性**，内容校验归既有闸门 / 验收；
@@ -390,7 +413,8 @@ Settling: <可执行的路径或命令> —— rc=0 ⇒ 结论A；rc=7 ⇒ 结�
 
 ### 五、闸门名录：发现，不是清单
 
-`gates-selftest.sh` **不接受手写名单**。它扫描 `zreflect/check_*.py`，要求每个都广告
+`zreflect/harness.py` **不接受手写名单**。它问 `registry --all-runnable`——**声明面**，
+不是文件名 glob——要求名录里每个都广告
 `--selftest`，缺了就红。
 
 手写名录的现实是：它一定会漂。加新检查器时忘了登记，那个检查器就变成"没人盯着的检查器"——
@@ -398,7 +422,7 @@ Settling: <可执行的路径或命令> —— rc=0 ⇒ 结论A；rc=7 ⇒ 结�
 
 每个 `--selftest` 以机器可读摘要行收尾：`=== N PASS / M FAIL ===`（与人读行并存，
 issue #3 ③）—— runner / CI 不论检查器叫什么都能 grep 同一个固定格式；
-`gates-selftest.sh` 发现自证缺这行即红。
+`zreflect/harness.py` 发现自证缺这行即红。
 
 **插件**的自证也接在同一个 runner 里：
 `reflect-hooks/einfacht-env.sh --selftest`
@@ -433,15 +457,34 @@ issue #3 ③）—— runner / CI 不论检查器叫什么都能 grep 同一个�
 ## 用法
 
 ```bash
-cp -r zreflect reflect-hooks gates-selftest.sh /path/to/your-repo/
+# 把套件拷进来。`ruff.toml` 也是套件的一部分 —— 没有它 `check_lint` 会
+# 明说未启用，你就失去那道静态检查闸门。
+cp -r zreflect reflect-hooks ruff.toml /path/to/your-repo/
+# 0. 全新仓必须先 bootstrap —— 否则它期望的那份文档根本不存在。
+#    --init 建 state / PRINCIPLES / AGENTS / README / retractions / questions，
+#    并按实际生成的文档写一份 Einfacht.env。它从不覆盖已有文件。
+python3 zreflect/facts.py --init
+#    然后在任何手工运行之前 **source 它**。不 source，闸门就回落默认名、
+#    去找你从没建过的文档、报红 —— 说明这一点的那行提示是 stderr 上的
+#    `ℹ gate.env_hint`：
+#       set -a; . ./Einfacht.env; set +a                     # 新仓
+#       set -a; . ./reflect-hooks/Einfacht.env; set +a       # 已有那份的仓
+#    ⚠️ `--init` 把 env 放在仓根 —— **除非** `reflect-hooks/Einfacht.env`
+#    已经存在（插件先读钩子目录，第二份只会让你的旋钮集分叉）。
 # 1. 写你的 measure()：把"测出来的事实"填进 FACTS.json（参考 facts.py 的 measure_example）
 #    ⚠️ 采集器四条原则见 zreflect/collect.py —— 只读持久盘、不引入会自己变的输入、
 #    读不到就明说、贵的测量做缓存。
 python3 zreflect/facts.py                      # 量一遍
-python3 zreflect/facts.py --render-doc STATE.md # 把机器块（事实 + 闸门名录）写进文档
+python3 zreflect/facts.py --render-doc          # 把机器块写进状态文档
+python3 zreflect/facts.py --render-doc PRINCIPLES.md   # ……规则块写进 PRINCIPLES.md
 python3 zreflect/facts.py --get 键名             # 只打印一条事实的裸值（脚本 / 其它语言用）
-# 2. 挂进 pre-commit / pre-push（重算机器块 + 全部闸门；pre-push 还要求三语 README 同批更新）
-sh reflect-hooks/install.sh
+# 2. 挂进提交 / 推送（重算机器块 + 全部闸门；推送还要求三语 README 同批更新）。
+#    Einfacht **不抢钩子座位**：只暴露一个入口（reflect-hooks/gate.py），
+#    任何钩子体系都可以调它。
+python3 reflect-hooks/install.py              # 打印接入说明，不写任何文件
+python3 reflect-hooks/install.py --chain      # 或：链式装进 .git/hooks（保留你原有的，先跑它）
+# ⚠️ `--legacy` 设 core.hooksPath —— 那会让 git **完全不看** .git/hooks，
+#    husky / lefthook / pre-commit / 手写钩子会被静默废掉。
 # 2b.（可选）给 hooks 一个持久的旋钮载体（issue #8）：
 #     cp reflect-hooks/Einfacht.env.example reflect-hooks/Einfacht.env
 #     —— git 不把自定义环境变量传给 hooks，钩子要读的 REFLECT_* 值住在这个
@@ -455,17 +498,48 @@ sh reflect-hooks/install.sh
 #     cp zreflect/world.json.example world.json   # 改：lines、
 #     active、stamps —— 多条独立维护线共享同一个验证
 #     环境的仓库用；单线仓库不用建（闸门明说未启用）
-# 2e. 迁移期纪律（issue #20 ①）：一个仓只许有一份**职责重叠**的 gates-selftest。
+# 2e. 迁移期纪律（issue #20 ①）：一个仓只许有一份**职责重叠**的自证 harness
+#     （现在是 `zreflect/harness.py`；`gates-selftest.sh` 只是兼容薄壳，不算第二份）。
 #     若确实需要两份（平台件在 zreflect/ + 仓专属件在别处），必须加一条
 #     **交集为空**的自证 —— 否则两边都会收同一项，职责必然漂（下游实测：
 #     pre-commit 同时跑两份、名单不同跑了几个月）。重叠才是病，两份文件不是。
 # 3. 手动复验（也是 hooks 会跑的那几条）
-sh gates-selftest.sh                           # 每个闸门先证明自己会红
-for g in zreflect/check_*.py; do python3 "$g" || exit 1; done   # 发现式名录 —— README 也不手写闸门清单
+python3 zreflect/harness.py                    # 每个闸门先证明自己会红
+python3 zreflect/registry.py --run commit       # 执行面的唯一入口 —— 不要 glob check_*.py
 ```
+
+### 写你自己的 `measure()`
 
 `facts.py` 里的 `measure_example()` 是**占位实现**（量的是本仓自己的文件数），
 换掉它 —— 系统只提供机制，你的输入只有你知道怎么量。
+
+**放哪。** 把模块放进 `zreflect/`，旋钮填裸模块名：
+
+```bash
+# Einfacht.env
+export REFLECT_MEASURE_MODULE=measure_myproject
+```
+
+```python
+# zreflect/measure_myproject.py
+from ledger import fact
+
+def measure():
+    return {
+        "tests_total": fact(
+            run_and_count_tests(),          # 值
+            "python -m pytest --collect-only -q | tail -1",  # 复跑命令
+            "repo",                          # 出处
+        ),
+    }
+```
+
+模块 import 不了是 **FATAL**（`rc=2`，不写盘）—— **不**回落到占位实现。
+这是有意的：静默回落会让你以为那些数字是你的项目，实际是套件自己的。
+
+**契约是 `fact(value, cmd, source)`，没有更松的写法。** 裸值（`{"k": 12}`）在**写盘之前**
+就被拒，消息里给出正确形状。`cmd` 必须**只打印值本身**（复跑闸门逐字比 `stdout.strip()`），
+而且必须真能跑 —— 否则那条「事实」就是带数字的散文。
 
 消费方（CI job、其它语言的测试）一律走 `--get KEY` 读台账 ——
 **不要自己解析 `FACTS.json`**：手写 parser 的经典坑是 substring 找
@@ -474,41 +548,38 @@ for g in zreflect/check_*.py; do python3 "$g" || exit 1; done   # 发现式名�
 CI 每次推送都正面执行同一条判据（`.github/workflows/gates.yml`）：
 `facts.py --check` + 发现式名录里的全部闸门（含 `check_facts_replay`
 —— 每条 `cmd` 在 CI 里真的逐字执行）。本地 hook 只约束跑过
-install.sh 的机器；CI 才是承诺的正面（issue #4 ②）。
+install.py 的机器；CI 才是承诺的正面（issue #4 ②）。
 
 （仓内文档：`STATE.md` 是活状态示例、`AGENTS.md` 是给 agent 的硬规矩 —— 两份都用中文维护；
 三语同批规则只管 README trio。）
 
-### ZCode hook 接线
+### 接进宿主的钩子（宿主无关）
 
-`.zcode/config.json` 给了一份可直接用的配置 —— **就是下面这个形状**（本仓自己那份接线
-曾经是这个示例的坏拷贝，issue #4 ①）：会话开始注入活状态、停止时刷新机器块。
+套件不占钩子座位，也不认识任何编辑器的配置 schema。它只暴露**一个入口**，
+剩下的归宿主：
 
-```json
-{
-  "hooks": {
-    "enabled": true,
-    "events": {
-      "SessionStart": [{ "matcher": "startup|resume|clear|compact",
-        "hooks": [{ "type": "command", "command": "python3 \"${ZCODE_PROJECT_DIR}/.zcode/inject-state.py\"" }] }],
-      "Stop": [{ "hooks": [{ "type": "command", "command": "python3 \"${ZCODE_PROJECT_DIR}/.zcode/stop-refresh.py\"" }] }]
-    }
-  }
-}
+```bash
+python3 zreflect/next.py            # 一段：未推送提交 / 工作区 / 未结案悬案
 ```
 
-三个形状都是承重的：
+这就是全部契约 —— stdout 上的纯文本行，每次现算，不写盘。要接进某个宿主的
+会话开始钩子，使用方自己包一层：
 
-- **`enabled: true` 是形状的一部分** —— 配置文件 hook 默认禁用。条目是
-  `hooks.events.<Event>` 下的 `{ matcher?, hooks: [{ type, command }] }`；
-  `hooks.<Event>` 平铺写法 ZCode 根本看不见。
-- **hook 的 stdout 按严格 JSON 解析**：`inject-state.py` 被 hook 调用（非 tty）时发
-  `{"hookSpecificOutput": {…}}` 信封，只有手工在终端跑才发纯文本。hook 上下文里的
-  纯文本会被静默丢弃 —— 日志只留一条看起来像小毛病的 failed。
-- **Stop 类 hook 必须永远退 0**。ZCode 的退出码语义是 `0` 放行 / `2` 阻塞 /
-  其它非零算错误，而 `facts.py --render-doc` 在台账缺失时退 2 —— 直接接线，
-  一次台账缺文件就把整个会话当人质。`.zcode/stop-refresh.py` 是永远退 0 的壳：
-  失败降级为 stderr 一句。
+```python
+subprocess.run([sys.executable, "zreflect/next.py"], capture_output=True, text=True)
+```
+
+再按那个宿主要求的形状拼装。几条值得知道的后果：
+
+- **它是算出来的，不是存下来的。** 每轮都变的东西没法被 `facts.py --check` 逐字节
+  对账：排除它，就没人验它；留着它，`--check` 永不收敛。所以它干脆不落盘。
+- **长度在产地有界**（`next.MAX_LISTED` / `next.SECTION_MAX`），不由调用方裁剪。
+  下游截断正是「下一步」那一段悄悄消失的原因。
+- **读不到 ≠ 失败。** git 不在 / 不是仓 / 没有 `questions/` —— 每一种都变成一句明说的行，
+  绝不编 0、绝不静默留白。真正的 bug 仍然照抛。
+
+git 钩子那一侧（`reflect-hooks/`）不一样，是**套件自己拥有**的：它们调
+`reflect-hooks/gate.py`，且从不接管 `core.hooksPath`。
 
 ## 它不做什么
 
@@ -556,6 +627,11 @@ install.sh 的机器；CI 才是承诺的正面（issue #4 ②）。
 | `REFLECT_INSTRUMENTS` | 空（不在 ⇒ 未启用） | 被证伪量法登记（issue #6 ①）：`{"methods": [{text, why, fixed_in}]}` |
 | `REFLECT_INSTRUMENT_DAYS` | 空（不在 ⇒ 未启用） | 恒常检测阈值天（issue #6 ①）：台账条目 `first_seen` 超阈值 ⇒「这条 cmd 是在量，还是恒返回同一个数？」 |
 | `REFLECT_ENV_FILE` | `Einfacht.env` | 钩子旋钮载体的文件名（issue #8），由可拔插件 `einfacht-env.sh` 解析（钩子目录优先、仓库根次之） |
+| `REFLECT_NO_PRINCIPLES` | 空 | 设 `1` ⇒ 本仓**不**把 `PRINCIPLES.md` 里的原则登记进台账，判定命令不每提交复跑。这是显式出口 —— 别靠删文件来表达「不遵守」 |
+| `REFLECT_LANG` | 空 | 输出语言包名。自带 `zh`（中文）、`en`（英语）、`de`（德语）；往 `zreflect/lang/` 里放一份包，任何别的语言名也认。**空 = null 包：本体不发任何自然语言**，只输出 `code(param=value)`（issue #26）。注释串（`OFF:` / `FATAL:` / `=== N PASS / M FAIL ===`）永不翻译 —— 它们是发射点的字面量 |
+| `REFLECT_I18N` | 空 | 语言包目录。**空 ⇒ 用套件自带的那份**（工具旁的 `zreflect/lang`），跨仓跑也能找到。设了 ⇒ 绝对路径，或**相对被检查仓根**的路径。两种形状都认且合并：`<lang>.json`（单文件）或 `<lang>/*.json`（按闸门命名空间分文件 —— 合并，后者覆盖） |
+| `REFLECT_SNAPSHOT_ROOT` | 空 | 模块级快照闸门扫描的源码目录。它抓 `from <本地模块> import 大写全局` —— 那个全局若被别人重新赋值，值拷贝会停在 import 那一刻变成陈旧快照。**空 ⇒ 扫套件自己的 `zreflect/`**（套件自己就是这个 bug 的最大受害者：`gate.GATE_REPO` 被多道自证改写）。要扫**你的代码**就设它 |
+| `REFLECT_I18N_ROOT` | 空 | 覆盖闸门扫描的源码目录（本体零语言检查）。**空 ⇒ 扫套件自己的 `zreflect/` + `reflect-hooks/`** —— 这道闸门从不 off，因为它守的规则就是关于本体的。要扫**你自己的代码**就设它：会**递归**遍历（`src/` 布局可以） |
 | `REFLECT_ENV_HINT` | 空（开） | `off` ⇒ 关闭**裸跑提示**。凡是旋钮来自 `Einfacht.env` 的闸门，在「手工裸跑且一个旋钮都没设」时会提示 *try running it with `Einfacht.env`*，并给出确切的 `set -a; . …; set +a` 一行。它是**提示不是判据**：不改 rc、不碰 stdout；没有载体的仓保持安静（那里裸跑是正常用法） |
 | `REFLECT_RETRACTIONS` | `retractions.json` | 翻案台账（翻案闸门扫 `REFLECT_DOCS` 文档里的重现行） |
 | `REFLECT_QUESTIONS` | `questions` | 悬案目录（一题一文件；每份必须挂可跑的结算件） |
@@ -580,7 +656,7 @@ install.sh 的机器；CI 才是承诺的正面（issue #4 ②）。
 `GATE_REPO`（`zreflect/gate.py`）指向**被检查的仓库根** —— 自证靠它在夹具树上跑，
 不碰真仓库。
 
-**跨仓库自证**（可复跑）：`gates-selftest.sh` 的最后一节会在一个**临时夹具仓库**里，
+**跨仓库自证**（可复跑）：`zreflect/harness.py` 的最后一节会在一个**临时夹具仓库**里，
 把上面这些名字**全**换成别的（`LEDGER.json` / `NOTES.md` / `RETRACT.json` / `cases/` /
 换名的 README trio），仍要求闸门全绿；再用**默认名字**跑同一夹具 —— 依赖这些名字的闸门
 必须全红。这就是"没有硬编码"的**可证伪**判据；名字改不动，那一节会红。

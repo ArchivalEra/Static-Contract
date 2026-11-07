@@ -57,7 +57,9 @@ retraction ledger.
 
 | Component | File | What it stops |
 |---|---|---|
-| **Gate platform** | `zreflect/gate.py` | checkers silently turning green — and the **rc contract's single home**: `off()` (0, prints an `OFF:` machine marker) / `fatal()` (2, config broken ≠ problems found) / `load_spec()` / `finish()` (1 vs 0) own the whole gate lifecycle, so 13 gates don't hand-copy their run-tails (they used to, and three divergent conventions grew: stdout-vs-stderr, header order, exit codes). `selftest()` now **refuses empty case lists** (the 0/0 hole — grep used to accept `0 PASS / 0 FAIL`); `main_selftest_or()` is the universal `__main__` tail; `meta()` is the declaration line the registry parses, and `run_phase()` is the **execution face**: it runs a phase's gates and aggregates `ran / off / failed` — so "all green" never silently includes "never ran" (this repo had 7 of 13 gates off). **off is a distinct state, not a pass** |
+| **Gate platform** | `zreflect/gate.py` | checkers silently turning green — and the **rc contract's single home**: `off()` (0, prints an `OFF:` machine marker) / `fatal()` (2, config broken ≠ problems found) / `load_spec()` / `finish()` (1 vs 0) own the whole gate lifecycle, so every gate stops hand-copying its run-tail (they used to, and three divergent conventions grew: stdout-vs-stderr, header order, exit codes). `selftest()` now **refuses empty case lists** (the 0/0 hole — grep used to accept `0 PASS / 0 FAIL`); `main_selftest_or()` is the universal `__main__` tail; `meta()` is the declaration line the registry parses, and `run_phase()` is the **execution face**: it runs a phase's gates and aggregates `ran / off / failed` — so "all green" never silently includes "never ran" (this repo once had most of its gates off while calling itself green). **off is a distinct state, not a pass** — and **off must carry a reason**: a gate that can call `off()` must declare `off_reason=` in its `meta(…)` line (≥8 chars, same discipline as `PINNED:`). Three directions are checked by `registry.off_reason_problems()`: can-off-without-reason ⇒ red; reason too short ⇒ red; **reason declared but `off()` never called ⇒ red** (a written-back lie); and **a reason that names a file must be true** — if `off_reason` claims "this repo has no `ab.json`" while that file exists, the reason is stale and red (`registry.off_reason_stale`), so off never becomes a permanent exemption. The file lookup checks **both legal locations** (repo root and `reflect-hooks/`, same rule as `einfacht-env.sh`) — checking only the root would miss an `Einfacht.env` that really lives under `reflect-hooks/`. **The tool's own `zreflect/` has exactly one producer**: `gate.zdir()` (and `gate.tool_repo()` for its parent). `knobs._zdir()`, `registry._zdir()` and i18n's tool-dir all delegate to it — they used to each compute `dirname(abspath(__file__))` separately, which was equal only by coincidence and would split the moment one of them changed. `registry.path_rule_problems()` catches any function that computes it again. **`never_falsifiable()` has its own self-test** — it is the guard behind rule 4 (tautology detection), and it had **zero** coverage: if it went blind, every assertion would silently lose its teeth, a fake-green one level deeper than 'a gate never ran'. Five directions are now asserted (`or True` / `and False` / `x == x` caught; a real assertion **not** caught; no source file ⇒ refuses to guess), with three honesty boundaries written down: it misses more disguised tautologies; **delegation is only reported when the lambda body is a single `Call`** (a `Compare` wrapping a helper call slips past — widening the rule would misfire on compound assertions, so the gap is stated instead); and it will not guess when the source is unreadable (`python -c` lambdas). The reason is rendered into the AUTO:GATES block as a *declaration* column — not runtime state (that would make the block change every run and stop converging; ask `registry --run <phase>` who is off right now) |
+| **Language core** (pluggable) | `zreflect/i18n.py` + `zreflect/lang/` | **the core emits no natural language.** Pull the suite, pick a language pack (`zh`, `en`, …) or pick none — unset, every message renders as `code(key='py_lines', actual=6180, expected=6014)`: structured, machine-parseable, no sentence. Chinese is **not** a source language, just another optional pack (issue #26). `M(code, **human_params)` builds every message — params are full English words (`key`/`actual`/`expected`/`threshold`, not `k`/`got`/`want`), values go through `repr` (quote nesting handled) and truncate at 40 chars. `Message` is a **`str` subclass**, so `if problems` / `len(...)` / `"  · " + p` keep working untouched; `.code` / `.params` are the new surface. Packs are `lang/<lang>.json` or `lang/<lang>/*.json` (one file per gate namespace — parallel development without write collisions). **Machine contracts are structurally untranslatable**: `OFF:` / `FATAL:` / `SKIP:` / `DOWN:` / `=== N PASS / M FAIL ===` are literals at the emission point, and a pack value that *looks* like such a line is rejected at load. Missing pack ⇒ FATAL, never a silent fallback to Chinese. **Self-test fixtures must not carry Chinese string literals** — a fixture lands in the scan surface, so build it from codepoints (`chr(CJK_LO)` / `_cj(n)`) or use an English sample; the only two legal CJK positions inside `_cases()` are **selftest labels** (1C: id + optional Chinese gloss) and **docstrings** (`check_i18n._fixture_literal_problems()`, added after the same mistake was made three times) |
+| **Language coverage gate** (pluggable) | `zreflect/check_i18n.py` | the criterion that makes "zero-language core" falsifiable instead of a slogan: **any bare CJK text in the core is a problem** — a message must go through `M(literal code, **params)`, a selftest label must be a dotted id. Exempt **by declaration**: `GATE = meta(name, desc)` declaration data, `re.compile(...)` matcher data, selftest **fixture source samples**, `i18n.py`'s own pack-loading errors (circular), and **AUTO machine blocks** (PINNED). Without this gate a language pack could cover 90% and nobody would know — the gate reports the remaining 325 → 0 |
 | **Bare-value runner** | `zreflect/runner.py` | the verbatim executor (`run_cmd` / `quote` / timeout) as a **public seam** — the replay gate and the world gate are its two adapters (two adapters = a real seam; it used to live in `check_facts_replay`'s private region) |
 | **Knob registry** | `zreflect/knobs.py` | the `REFLECT_*` concept having no module: reads scattered across gates, declarations in docstrings, the roster guessed by text-scan (which admitted **phantom knobs** — configured, silently ignored). One roster (name → kind/default/meaning), **declared-or-die**; plus the self-consistency judgments (scan-surface phantoms, README phantoms, declared-knobs ⊆ actually-read, registry ⊆ README tables) — all of which run **regardless of any env-file carrier** (they were once welded behind it and never executed) |
 | **Discovery registry** | `zreflect/registry.py` | the gate *set* was discovered but its **narration** was hand-written — and hand-written narration drifts (STATE.md said ten gates when thirteen existed; the red-list named 4 of 6). Gates self-declare (`GATE = gate.meta(…)`, ast-parsed, no import); platform modules too (`MODULE = module_meta(…)`, C5). The registry derives the **execution list** (`runnable(phase)` — the only source; hooks/CI/runner read it instead of globbing `check_*.py`), the narration (**AUTO:GATES** machine block), the red-list, and the selftest roster. `runs_at` (C1) is a declaration field, not a naming accident: `doctor` is a gate whose phase is `start-of-work` |
@@ -141,6 +143,32 @@ gate lifecycle's single home:
   and derives the red-list, so the hand-written "ten gates" list that had already drifted is gone),
   and `guard.py` (the ledger write guards' decision, separated from execution so the path that
   actually refuses has selftests — a guard here once shipped dead from birth).
+
+**Deepened again (2026-11-02): the dependency chain and the declarations.** Two more things had
+never been proven:
+
+- `living.living_lines()` decides *which lines count as living state*, and `check_stale` /
+  `check_retractions` **consume it** — yet it had **zero assertions**. Had it mis-split a
+  document, those two gates would lose every criterion while their own selftests stayed green.
+  Seven assertions now cover its decision branches (numbered historical section / unnumbered
+  defaults to living / appendix not scanned / line-to-section tracking) plus `collect.py`'s
+  `parse_prev_values` and `unavailable`.
+- **`selftest=False` does not mean "no self-test"** — it means "no `--selftest` entry point"
+  (these modules are pure contracts/helpers; adding a CLI would fight their role). Their logic
+  *is* asserted, inside `registry._cases()`, and the module description must say so
+  (`registry.selftest_false_modules_state_where_selftest_lives`, discovery-based: no name list).
+  A description reading "no independent self-test" is a disclaimer, not a fact.
+
+**And the dependency chain is now swept mechanically.** `living_lines()` was not a freak
+case: a systematic scan found **four more** platform functions consumed by gates with zero
+assertions of their own (`gate.guard_nonempty`, `gate.load_spec`, `ledger.value_of`,
+`runner.default_timeout`). Each got one, and `registry.dependency_coverage_problems()`
+(C4 reconciler ⑨) keeps it that way — discovery-based: it reads the AST for *who consumes
+what* in `check_*.py` / `doctor.py`, then for *what is asserted* (the Load names inside each
+`_cases()` **and the helpers it calls**). Framework APIs are excluded by breadth (≥3 gates
+share them), so `gate.meta` / `main_selftest_or` / `i18n.M` are not demanded to test
+themselves. A consumed-but-untested function is a dead link: it misjudges, the consuming
+gate loses its criteria, and that gate's own self-test still passes.
 
 The lesson is the one this whole repo is built on: **the narration drifts exactly like the numbers
 do.** The gate *set* was discovered, but "how many gates are there and which" was hand-written prose
@@ -337,7 +365,7 @@ of work, not in pre-commit** — wrong frequency
 there, and it would slow every commit. (So it is
 `doctor.py`, not `check_doctor.py`: the discovery
 loop `for g in zreflect/check_*.py` never sees it;
-`gates-selftest.sh` names it once to prove it can
+`zreflect/harness.py` names it once to prove it can
 turn red, same as the env plugin.) Liveness is an
 instantaneous fact ⇒ **not in ledger replay** — it
 runs for real at every start of work. Boundary,
@@ -480,8 +508,11 @@ a wolf-crying gate gets blanket-`--accept`ed, and that is worse than nothing.
 
 ### 5. Gate registry: discovered, not listed
 
-`gates-selftest.sh` **takes no hand-written list**. It scans `zreflect/check_*.py`, requires every
-file to advertise `--selftest`, and turns red if one is missing.
+`zreflect/harness.py` **takes no hand-written list**. It asks `registry --all-runnable` — the
+*declaration* surface, not a filename glob — and requires every listed gate to advertise
+`--selftest`, turning red if one is missing.
+(`gates-selftest.sh` survives only as an 11-line compatibility shim that `exec`s it: other repos'
+CI still calls that line, so deleting it would turn their builds red with rc=127.)
 
 The reality of hand-written registries: they always drift. Add a checker, forget to register it,
 and that checker becomes "a checker nobody watches" — while the registry itself stays green,
@@ -489,7 +520,7 @@ reporting all-is-well. So it works the other way here: **registration is discove
 
 Every `--selftest` ends with a machine-readable summary line, `=== N PASS / M FAIL ===`
 (kept alongside the human line, issue #3 ③) — runners and CI grep one fixed format
-regardless of the checker's name, and `gates-selftest.sh` turns red when a selftest
+regardless of the checker's name, and `zreflect/harness.py` turns red when a selftest
 lacks it.
 
 The **plugin's** selftest is wired into the same runner:
@@ -532,16 +563,38 @@ deliberately brutal: **every push must update all three together.**
 ## Usage
 
 ```bash
-cp -r zreflect reflect-hooks gates-selftest.sh /path/to/your-repo/
+# Copy the suite in. `ruff.toml` is part of it too — without it `check_lint`
+# says out loud that it is off, and you lose the static-check gate.
+cp -r zreflect reflect-hooks ruff.toml /path/to/your-repo/
+# 0. In a fresh repo, bootstrap first — otherwise the doc it expects does not exist.
+#    --init creates state/PRINCIPLES/AGENTS/README/retractions/questions plus an
+#    Einfacht.env trimmed to the docs it actually made. It never overwrites.
+python3 zreflect/facts.py --init
+#    Then SOURCE that env before any hand-run. Without it the gates fall back to
+#    default names, look for docs you never created, and report red — the hint
+#    saying so is `ℹ gate.env_hint` on stderr.
+#
+#    ⚠️ Which one? `--init` puts it at the repo root **unless**
+#    `reflect-hooks/Einfacht.env` already exists — the plugin reads the hooks
+#    dir first, so a second copy would fork your knob set. Source whichever
+#    one you have:
+#       set -a; . ./Einfacht.env; set +a                     # fresh repo
+#       set -a; . ./reflect-hooks/Einfacht.env; set +a       # repo that had one
 # 1. Write your measure(): fill FACTS.json with measured facts (see measure_example in facts.py)
 #    ⚠️ the collector's four principles live in zreflect/collect.py — persistent disk only,
 #    no inputs that change by themselves, say "unavailable" out loud, cache the expensive ones.
 python3 zreflect/facts.py                       # measure once
-python3 zreflect/facts.py --render-doc STATE.md # write the machine blocks (facts + gate registry) into the doc
+python3 zreflect/facts.py --render-doc          # write the machine blocks into the state doc
+python3 zreflect/facts.py --render-doc PRINCIPLES.md   # …and the rules block into PRINCIPLES.md
 python3 zreflect/facts.py --get py_lines         # bare value of one fact (for scripts / other languages)
-# 2. Install pre-commit / pre-push (recompute block + run all gates;
-#    pre-push additionally refuses pushes that don't update the README trio together)
-sh reflect-hooks/install.sh
+# 2. Wire the gates into commit/push (recompute block + run all gates;
+#    push additionally refuses pushes that don't update the README trio together).
+#    Einfacht does NOT take over the hook slot: it exposes one entry
+#    (reflect-hooks/gate.py) that any hook system can call.
+python3 reflect-hooks/install.py              # prints wiring instructions, writes nothing
+python3 reflect-hooks/install.py --chain      # or: chain into .git/hooks (keeps yours, runs it first)
+# ⚠️ `--legacy` sets core.hooksPath, which makes git IGNORE .git/hooks entirely
+#    (husky / lefthook / pre-commit / hand-written hooks go silently dead).
 # 2b. (optional) give the hooks a durable knob carrier (issue #8):
 #     cp reflect-hooks/Einfacht.env.example reflect-hooks/Einfacht.env
 #     — git does not export custom env to hooks, so REFLECT_* values the
@@ -564,12 +617,44 @@ sh reflect-hooks/install.sh
 #     pre-commit with different lists for months). Overlap is the disease;
 #     two files are not.
 # 3. Manual re-verification (the same commands the hooks run)
-sh gates-selftest.sh                            # every gate must first prove it can turn red
-for g in zreflect/check_*.py; do python3 "$g" || exit 1; done   # discovered registry — no hand-written lists, not even here
+python3 zreflect/harness.py                     # every gate must first prove it can turn red
+python3 zreflect/registry.py --run commit       # the ONLY execution face — never glob check_*.py
 ```
+
+### Writing your `measure()`
 
 `measure_example()` in `facts.py` is a **placeholder** (it counts this repo's own files) — replace
 it. The system ships the mechanism; only you know how to measure *your* inputs.
+
+**Where it lives.** Put your module **inside `zreflect/`** and point the knob at its bare name:
+
+```bash
+# Einfacht.env
+export REFLECT_MEASURE_MODULE=measure_myproject
+```
+
+```python
+# zreflect/measure_myproject.py
+from ledger import fact
+
+def measure():
+    return {
+        "tests_total": fact(
+            run_and_count_tests(),          # the value
+            "python -m pytest --collect-only -q | tail -1",  # replay command
+            "repo",                          # provenance
+        ),
+    }
+```
+
+A module that cannot be imported is **fatal** (`rc=2`, nothing written) — it does *not* fall back
+to the placeholder. That is deliberate: a silent fallback would let you believe the numbers
+describe your project when they describe the toolkit.
+
+**The contract is `fact(value, cmd, source)`, nothing looser.** A bare value (`{"k": 12}`) is
+rejected *before* the ledger is written, with the correct shape in the message. `cmd` must print
+**only the value** (the replay gate compares `stdout.strip()` against it verbatim), and must
+really run — otherwise that "fact" is prose with a number in it.
 
 Consumers (CI jobs, tests in other languages) read the ledger through `--get KEY` —
 **never parse `FACTS.json` yourselves**: a hand-rolled parser's classic failure is
@@ -578,43 +663,39 @@ substring-matching `"value"` and grabbing **another key's** value (issue #4 ④)
 CI runs the same judgment on every push (`.github/workflows/gates.yml`):
 `facts.py --check` plus every discovered checker — `check_facts_replay` included,
 so every `cmd` is really executed in CI too. Local hooks only bind machines that ran
-`install.sh`; CI is the promise's front line (issue #4 ②).
+`install.py`; CI is the promise's front line (issue #4 ②).
 
 (Repo-local docs: `STATE.md` is the living-state example and `AGENTS.md` holds the agent rules —
 both are kept in Chinese; the trilingual rule applies to the README trio.)
 
-### Hook wiring for ZCode sessions
+### Wiring it into a host (host-agnostic)
 
-`.zcode/config.json` ships a ready-made config — **in this exact shape** (this repo's own
-wiring was once a broken copy of this example, issue #4 ①): inject living state at session
-start, refresh the machine block on stop.
+The suite does not own a hook seat and does not know any editor's config schema. It exposes
+**one entry point** and lets the host decide the rest:
 
-```json
-{
-  "hooks": {
-    "enabled": true,
-    "events": {
-      "SessionStart": [{ "matcher": "startup|resume|clear|compact",
-        "hooks": [{ "type": "command", "command": "python3 \"${ZCODE_PROJECT_DIR}/.zcode/inject-state.py\"" }] }],
-      "Stop": [{ "hooks": [{ "type": "command", "command": "python3 \"${ZCODE_PROJECT_DIR}/.zcode/stop-refresh.py\"" }] }]
-    }
-  }
-}
+```bash
+python3 zreflect/next.py            # one section: unpushed commits / working tree / open questions
 ```
 
-Three shapes are load-bearing:
+That is the whole contract — plain lines on stdout, computed fresh each call, nothing written
+to disk. To wire it into a session-start hook, the consumer wraps it:
 
-- **`enabled: true` is part of the shape** — config-file hooks ship disabled. Entries are
-  `{ matcher?, hooks: [{ type, command }] }` under `hooks.events.<Event>`; the flat
-  `hooks.<Event>` form is one ZCode never sees.
-- **hook stdout is parsed as strict JSON**: `inject-state.py` emits the
-  `{"hookSpecificOutput": {…}}` envelope when the hook runs it (non-tty) and plain text
-  only when run by hand in a terminal. Plain text in hook context is silently dropped —
-  the log keeps one failed line that looks minor.
-- **Stop hooks must always exit 0**. ZCode's exit codes are `0` pass / `2` block /
-  other = error, and `facts.py --render-doc` exits 2 on a missing ledger — wiring it
-  directly takes the session hostage on one missing file. `.zcode/stop-refresh.py` is the
-  always-0 wrapper: failures degrade to one stderr line.
+```python
+subprocess.run([sys.executable, "zreflect/next.py"], capture_output=True, text=True)
+```
+
+then formats the captured text however that host expects. A few consequences worth knowing:
+
+- **It is computed, not stored.** A block that changes every turn cannot be reconciled
+  byte-for-byte by `facts.py --check`: exclude it and nothing verifies it, keep it and
+  `--check` never converges. So it does not go on disk at all.
+- **Length is bounded at the source** (`next.MAX_LISTED` / `next.SECTION_MAX`), not by the
+  caller. Truncating downstream is how the "next steps" list silently disappeared.
+- **Reading is not failing.** git missing, not a repo, no `questions/` — each becomes an
+  explicit line, never a fabricated zero and never a silent blank. Real bugs still raise.
+
+The git-hook side (`reflect-hooks/`) is different and *is* owned by the suite: those hooks
+call `reflect-hooks/gate.py` and never take over `core.hooksPath`.
 
 ## What this is not
 
@@ -669,6 +750,11 @@ to plain env vars + default names (the mechanism is removable by design).
 | `REFLECT_INSTRUMENTS` | empty (absent ⇒ off) | falsified-measurement-method registry (issue #6 ①): `{"methods": [{text, why, fixed_in}]}` |
 | `REFLECT_INSTRUMENT_DAYS` | empty (absent ⇒ off) | constant-value detection threshold in days (issue #6 ①): a ledger entry whose `first_seen` is older ⇒ "is this cmd measuring, or always returning the same number?" |
 | `REFLECT_ENV_FILE` | `Einfacht.env` | file name of the hooks' knob carrier (issue #8), resolved by the removable plugin `einfacht-env.sh` (hooks dir first, repo root second) |
+| `REFLECT_NO_PRINCIPLES` | empty | set to `1` ⇒ this repo does **not** register the principles in `PRINCIPLES.md` into the ledger, so their verdict commands are not replayed every commit. This is the explicit opt-out — do not rely on deleting the file |
+| `REFLECT_LANG` | empty | output language pack name. Ships with `zh` (Chinese), `en` (English), `de` (German); any other name works if you drop a pack in `zreflect/lang/`. **Empty = the null pack: the core emits no natural language**, only `code(param=value)` (issue #26). Comment strings (`OFF:`, `FATAL:`, `=== N PASS / M FAIL ===`) are never translated — they are literals at the emission point |
+| `REFLECT_I18N` | empty | directory holding language packs. **Empty ⇒ the pack dir that ships with the toolkit** (`zreflect/lang` beside the tool), so a run in another repo still finds them. Set it ⇒ absolute path, or a path relative to the **repo under check**. Both shapes are accepted and merged: `<lang>.json` (one file) or `<lang>/*.json` (one file per gate namespace — merged, later wins) |
+| `REFLECT_SNAPSHOT_ROOT` | empty | source dir scanned by the module-snapshot gate. It flags `from <localmodule> import SOME_GLOBAL` when that global is reassigned elsewhere — a copy by value goes stale at import time. **Empty ⇒ it scans the toolkit's own `zreflect/`** (the suite is the biggest victim of this bug: `gate.GATE_REPO` is reassigned by several selftests). Set it to scan **your** code |
+| `REFLECT_I18N_ROOT` | empty | source dir scanned by the coverage gate (core-has-no-language check). **Empty ⇒ it scans the toolkit's own `zreflect/` + `reflect-hooks/`** — the gate is never off, because the rule it enforces is about the core itself. Set it to scan **your** code: it is walked **recursively** (a `src/` layout works) |
 | `REFLECT_ENV_HINT` | empty (on) | `off` ⇒ silences the **running-without-env hint**. Every gate whose knobs come from `Einfacht.env` prints, on a bare manual run with none of them set, *try running it with `Einfacht.env`* — with the exact `set -a; . …; set +a` line. A hint, not a judgement: it never changes rc, never touches stdout, and stays quiet in repos that have no carrier (bare runs are normal there) |
 | `REFLECT_RETRACTIONS` | `retractions.json` | refuted-claims ledger (the retraction gate scans the `REFLECT_DOCS` docs for their reappearance) |
 | `REFLECT_QUESTIONS` | `questions` | open-questions directory (one question per file; each must name a runnable settler) |
@@ -695,10 +781,13 @@ Python and silently change behaviour — verified per site).
 and design intent is a worse repo with a better number.
 
 `GATE_REPO` (`zreflect/gate.py`) points at **the repo being checked** — selftests run against
-fixture trees through it and never touch the real repo.
+fixture trees through it and **never write into the real repo**. That is asserted, not assumed:
+an earlier version did pollute the caller's `FACTS.json` via `facts.py --selftest`, because a
+self-test called `main()` for real. Dispatch decisions now live in a pure function
+(`facts._classify`), so the test checks the decision without executing it.
 
-**Cross-repo selftest** (re-runnable): the last section of `gates-selftest.sh` builds a **throwaway
-fixture repo**, renames **all of these** (`LEDGER.json` / `NOTES.md` / `RETRACT.json` / `cases/` /
+**Cross-repo selftest** (re-runnable): the last section of `zreflect/harness.py` builds a
+**throwaway fixture repo**, renames **all of these** (`LEDGER.json` / `NOTES.md` / `RETRACT.json` / `cases/` /
 the README trio under different names) and requires every gate green — then runs the same fixture
 under the **default** names and requires every name-dependent gate red. That is the falsifiable
 criterion for "no hardcoded names": if a name cannot be changed, that section turns red.

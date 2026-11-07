@@ -1,0 +1,9 @@
+{
+ "measure.note_catalogue_releases": "catalogue 收录的 release 条目数（0 字节托管，只记 id + base）",
+ "measure.note_mail_unread": "未读信件数（读过的在 mail/read/）",
+ "measure.note_site_build": "站点构建器自证通过数（catalogue 校验 + 0 字节闸门双向 + 确定性）",
+ "measure.note_specs_md": "契约正典 + 演化史文档数（正典 = v4）",
+ "measure.note_tool_check_release": "release 校验器自证通过数（V1–V10 逐条反向）",
+ "measure.note_tool_manifest": "manifest 生成器自证通过数（白名单反向 + v4 结构 + 边界）",
+ "sitebuild.selftest_red": "站点构建自证红（rc=%(rc)d）—— 0 字节闸门或 catalogue 校验失守"
+}

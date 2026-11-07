@@ -1,0 +1,15 @@
+{
+ "catalogue.fallback_bad_json": "site/catalogue.json is not valid JSON: %(error)s",
+ "catalogue.fallback_handwritten": "fallback source contains %(count)d hand-written releases — entries come only from sync-catalogue derivation (hand edits = a second source); remove them",
+ "catalogue.fallback_releases_not_list": "fallback source releases must be an array",
+ "catalogue.fallback_schema": "fallback source schema must be 1, got %(actual)r",
+ "catalogue.missing_fallback": "missing site/catalogue.json fallback source",
+ "catalogue.missing_sources": "missing site/sources.json (subscription list)",
+ "catalogue.ok": "catalogue derivation gate: OK (deriver selftest green / fallback empty / subscription list non-empty)",
+ "catalogue.problems": "catalogue derivation gate: %(count)d problem(s)",
+ "catalogue.selftest_no_output": "(no output)",
+ "catalogue.selftest_red": "deriver selftest red (%(tail)s)",
+ "catalogue.sources_bad_json": "sources.json is not valid JSON: %(error)s",
+ "catalogue.sources_bad_shape": "sources.json entry has a bad shape: %(item)s",
+ "catalogue.sources_not_list": "sources.json's sources must be a non-empty array"
+}

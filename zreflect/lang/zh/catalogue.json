@@ -1,0 +1,15 @@
+{
+ "catalogue.fallback_bad_json": "site/catalogue.json 非法 JSON: %(error)s",
+ "catalogue.fallback_handwritten": "兜底源里有 %(count)d 条手写 release —— 条目只由 sync-catalogue 从 release 派生（手改 = 第二个产地）；删掉它们",
+ "catalogue.fallback_releases_not_list": "兜底源 releases 必须是数组",
+ "catalogue.fallback_schema": "兜底源 schema 必须是 1，got %(actual)r",
+ "catalogue.missing_fallback": "缺 site/catalogue.json 兜底源",
+ "catalogue.missing_sources": "缺 site/sources.json（订阅清单）",
+ "catalogue.ok": "catalogue 派生闸门：OK（派生器自证绿 / 兜底源空 / 订阅清单非空）",
+ "catalogue.problems": "catalogue 派生闸门：%(count)d 个问题",
+ "catalogue.selftest_no_output": "(无输出)",
+ "catalogue.selftest_red": "派生器自证红（%(tail)s）",
+ "catalogue.sources_bad_json": "sources.json 非法 JSON: %(error)s",
+ "catalogue.sources_bad_shape": "sources.json 条目形状坏: %(item)s",
+ "catalogue.sources_not_list": "sources.json 的 sources 必须是非空数组"
+}

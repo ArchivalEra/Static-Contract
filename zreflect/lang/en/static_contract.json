@@ -1,0 +1,9 @@
+{
+ "measure.note_catalogue_releases": "release entries in the catalogue (zero-byte hosting; records id + base only)",
+ "measure.note_mail_unread": "unread letter count (read ones live in mail/read/)",
+ "measure.note_site_build": "site builder selftest pass count (catalogue check + zero-byte gate both directions + determinism)",
+ "measure.note_specs_md": "contract canon + evolution history document count (canon = v4)",
+ "measure.note_tool_check_release": "release validator selftest pass count (V1-V10, one counter-case each)",
+ "measure.note_tool_manifest": "manifest generator selftest pass count (allowlist negative + v4 shape + boundaries)",
+ "sitebuild.selftest_red": "site build selftest red (rc=%(rc)d) — the zero-byte gate or the catalogue check failed"
+}

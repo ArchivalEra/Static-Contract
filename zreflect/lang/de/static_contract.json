@@ -1,0 +1,9 @@
+{
+ "measure.note_catalogue_releases": "Release-Einträge im Katalog (Zero-Byte-Hosting; nur id + base)",
+ "measure.note_mail_unread": "Anzahl ungelesener Briefe (gelesene liegen in mail/read/)",
+ "measure.note_site_build": "Selbsttest-Quote des Site-Builders (Catalogue-Prüfung + Zero-Byte-Gate beidseitig + Determinismus)",
+ "measure.note_specs_md": "Anzahl der Kanon- und Evolutionsdokumente (Kanon = v4)",
+ "measure.note_tool_check_release": "Selbsttest-Quote des Release-Validators (V1–V10, je ein Gegenbeispiel)",
+ "measure.note_tool_manifest": "Selbsttest-Quote des Manifest-Generators (Allowlist negativ + v4-Form + Grenzen)",
+ "sitebuild.selftest_red": "Selbsttest des Site-Builds rot (rc=%(rc)d) — Zero-Byte-Gate oder Catalogue-Prüfung verletzt"
+}

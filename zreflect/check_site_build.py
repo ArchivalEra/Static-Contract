@@ -16,22 +16,23 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from gate import meta, module_meta, repo                  # noqa: E402
+from i18n import M                                        # noqa: E402
 
 GATE = meta("站点构建自证",
             "build-site.py 自证 10 条（catalogue 校验 + 0 字节闸门 + 确定性）",
             runs_at="commit")
 
-REPO = repo("")
+# `repo()` 在调用点即时求值（新版 snapshot 闸门：模块顶层冻结含可变
+# 全局的表达式是派生快照 —— 而它本就是纯函数，开销可忽略）。
 CMD = [sys.executable, os.path.join("scripts", "build-site.py"), "--selftest"]
 
 
 def main():
-    p = subprocess.run(CMD, cwd=REPO, capture_output=True, text=True)
+    p = subprocess.run(CMD, cwd=repo(""), capture_output=True, text=True, encoding="utf-8")
     sys.stdout.write(p.stdout)
     sys.stderr.write(p.stderr)
     if p.returncode != 0:
-        print("FATAL: 站点构建自证红（rc=%d）—— 0 字节闸门或 catalogue 校验失守" % p.returncode,
-              file=sys.stderr)
+        print("FATAL: " + M("sitebuild.selftest_red", rc=p.returncode), file=sys.stderr)
         return 1
     return 0
 
@@ -41,4 +42,6 @@ MODULE = module_meta("站点构建自证闸门", "壳：把 scripts/build-site.p
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    from gate import activate_or_fatal
+    _rc = activate_or_fatal()
+    sys.exit(_rc or main())

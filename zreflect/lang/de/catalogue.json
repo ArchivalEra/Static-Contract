@@ -1,0 +1,15 @@
+{
+ "catalogue.fallback_bad_json": "site/catalogue.json ist kein gültiges JSON: %(error)s",
+ "catalogue.fallback_handwritten": "Fallback-Quelle enthält %(count)d manuell eingetragene Releases — Einträge entstehen nur durch sync-catalogue (Handedit = zweite Quelle); bitte entfernen",
+ "catalogue.fallback_releases_not_list": "releases der Fallback-Quelle muss ein Array sein",
+ "catalogue.fallback_schema": "Schema der Fallback-Quelle muss 1 sein, ist %(actual)r",
+ "catalogue.missing_fallback": "site/catalogue.json (Fallback-Quelle) fehlt",
+ "catalogue.missing_sources": "site/sources.json (Abo-Liste) fehlt",
+ "catalogue.ok": "Catalogue-Ableitungs gate: OK (Selbsttest grün / Fallback leer / Abo-Liste nicht leer)",
+ "catalogue.problems": "Catalogue-Ableitungs gate: %(count)d Problem(e)",
+ "catalogue.selftest_no_output": "(keine Ausgabe)",
+ "catalogue.selftest_red": "Selbsttest des Derivers rot (%(tail)s)",
+ "catalogue.sources_bad_json": "sources.json ist kein gültiges JSON: %(error)s",
+ "catalogue.sources_bad_shape": "Eintrag in sources.json hat ein ungültiges Format: %(item)s",
+ "catalogue.sources_not_list": "sources in sources.json muss ein nicht-leeres Array sein"
+}

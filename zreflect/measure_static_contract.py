@@ -23,6 +23,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from i18n import M                                         # noqa: E402
 from ledger import fact                                    # noqa: E402
 from gate import module_meta                               # noqa: E402
 
@@ -37,7 +38,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 def _one(cmd):
     """跑一条裸值命令，返回 stdout.strip()（读不到 ⇒ None，调用方决定写不写）。"""
     try:
-        p = subprocess.run(cmd, shell=True, capture_output=True, text=True,
+        p = subprocess.run(cmd, shell=True, capture_output=True, text=True, encoding="utf-8",
                            cwd=REPO, timeout=60)
     except (OSError, subprocess.SubprocessError):
         return None
@@ -54,18 +55,18 @@ def measure():
     n_specs = len(glob.glob(os.path.join(REPO, "specs", "*.md")))
     if n_specs:
         facts["specs_md"] = fact(n_specs, "ls specs/*.md | wc -l", "specs/",
-                                 "契约正典 + 演化史文档数（正典 = v4）")
+                                 M("measure.note_specs_md"))
 
     # ── 三套自证的通过数（本仓判据强度）────────────────────────────────────────
     #   PASS 行计数与各工具自证的「=== N PASS / 0 FAIL ===」同源；哪套红了，
     #   pre-commit 的 check_site_build / CI 会先红，这里只是把数值入账供引用。
     for key, tool, what in (
             ("tool_manifest_selftest_pass", "tools/make-manifest-v4.py",
-             "manifest 生成器自证通过数（白名单反向 + v4 结构 + 边界）"),
+             M("measure.note_tool_manifest")),
             ("tool_check_release_selftest_pass", "tools/check-release-v4.py",
-             "release 校验器自证通过数（V1–V10 逐条反向）"),
+             M("measure.note_tool_check_release")),
             ("site_build_selftest_pass", "scripts/build-site.py",
-             "站点构建器自证通过数（catalogue 校验 + 0 字节闸门双向 + 确定性）")):
+             M("measure.note_site_build"))):
         n = _one("python3 %s --selftest 2>/dev/null | grep -c '^PASS'" % tool)
         if n is not None and n.strip().isdigit():
             facts[key] = fact(int(n),
@@ -81,17 +82,21 @@ def measure():
                 int(n_rel),
                 "python3 -c \"import json;print(len(json.load(open("
                 "'site/catalogue.json'))['releases']))\"",
-                "site/catalogue.json", "catalogue 收录的 release 条目数（0 字节托管，只记 id + base）")
+                "site/catalogue.json", M("measure.note_catalogue_releases"))
 
     # ── 邮件未读数（收件箱状态；read/ 里的 = 已读，不列）────────────────────────
     n_unread = _one("find mail -maxdepth 1 -name '[0-9]*.md' | wc -l")
     if n_unread is not None and n_unread.strip().isdigit():
         facts["mail_unread"] = fact(int(n_unread),
                                     "find mail -maxdepth 1 -name '[0-9]*.md' | wc -l",
-                                    "mail/", "未读信件数（读过的在 mail/read/）")
+                                    "mail/", M("measure.note_mail_unread"))
 
     return facts
 
 
 if __name__ == "__main__":
+    from gate import activate_or_fatal
+    _rc = activate_or_fatal()
+    if _rc:
+        sys.exit(_rc)
     print(json.dumps(measure(), ensure_ascii=False, indent=1))
