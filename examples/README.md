@@ -127,6 +127,25 @@ Edge cases exercised against the live service:
 | arbitrary codec name | accepted by `useDecoder` (open vocabulary) |
 | `useDecoder("identity", …)` | refused |
 
+## `producer/` — the producer's half
+
+`fetch-concurrent.ts` is the consumer's half. `producer/` is the other side: a
+**template** for a release-producing workflow, extracted from LLVM-wasm's real
+`release.yml` with all product-specific parts (14 payloads, per-entry licence
+table, 105 chunks, previous-release recovery) replaced by clearly marked
+placeholders.
+
+Two files: `README.md` (the eight gates in order, with the reasoning for each)
+and `release-template.yml` (a valid YAML skeleton, not runnable CI — no trigger,
+no secrets, no real paths).
+
+Its single rule is the contract's: **a release's contents must be exactly its
+manifest's contents**, checked in both directions before upload and again after
+read-back from the serving bytes. It also records which tools are canonical
+(`Static-Contract/tools/`) and that the v1/v2/v3-era probes are history, not
+current judgements — a runnable script in `tools/` gets copied, whereas the same
+history as a deprecated document in `specs/` does not.
+
 ## Choosing your own codec chain
 
 The contract does not fix which branch a release is fetched from. Canon V9 calls

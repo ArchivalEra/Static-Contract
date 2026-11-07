@@ -1,0 +1,193 @@
+# TEMPLATE — producer release workflow (contract v4 / v1.1)
+#
+# This file is a SKELETON, not runnable CI. See README.md in this directory for
+# the reasoning behind each gate and the placeholders you must fill. Extracted
+# from LLVM-wasm/.github/workflows/release.yml with all product-specific parts
+# (14 payloads, per-entry licences, 105 chunks, previous-release recovery)
+# replaced by <PLACEHOLDER> markers.
+#
+# Do not paste this into .github/workflows/ unchanged: it has no real inputs,
+# no secret wiring, and tool paths that must point at the canonical repository.
+
+name: release-contract-template
+
+# A real workflow needs its own trigger. LLVM uses workflow_dispatch with
+# `tag`, `source_tag`, `publish` inputs; a producer with build artefacts in git
+# may use `push: tags: ['v*']` instead.
+# on: <YOUR_TRIGGER>
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install zstandard
+        run: pip install zstandard
+
+      # ── Fetch canonical contract tools ─────────────────────────────────────
+      # Fetch from the repository that OWNS the canon, not from a copy held by
+      # an upstream requester. Byte-identical copies drift.
+      # `upgrade-manifest-license.py` is current (schema 2 -> 3) and lives in
+      # the tool repo; the v1/v2/v3-era probes are NOT used here.
+      - name: Fetch the contract tools
+        run: |
+          git clone --depth 1 https://github.com/ArchivalEra/Static-Contract /tmp/contract
+          # <PLACEHOLDER: also fetch the tool repo that owns
+          #  upgrade-manifest-license.py, or vendor that single file with a
+          #  pinned sha256. Do not clone the whole upstream repo just to reach it.>
+
+      # ── 1) Materialise payloads ────────────────────────────────────────────
+      # <PLACEHOLDER: if payloads are in git, skip this.>
+      # If they are not: recover them from the previous release's identity
+      # chunks (contract client algorithm step 4/5), then verify every recovered
+      # byte against release/payloads.json (name/bytes/sha256). Match by SHA,
+      # never by guessing a name mapping — a wrong mapping is caught by the hash.
+      # LLVM's tarball fallback (<= v0.1.4) is migration-only; a new producer
+      # should not need it.
+
+      # ── 2) Generate the split form ─────────────────────────────────────────
+      # The canonical generator emits schema 2. Feed it a directory containing
+      # ONLY the payloads listed in release/payloads.json: metadata files are an
+      # index, not payloads, and including them silently adds entries.
+      - name: Generate manifest and chunks
+        run: 'python3 /tmp/contract/tools/make-manifest-v4.py <PLACEHOLDER: args> --out release/split'
+
+      # ── 3) The core compliance gate ────────────────────────────────────────
+      # "release contents == manifest contents", in BOTH directions.
+      # Run before any upload. One extra asset breaks the contract even if it
+      # is useful (a whole-bundle tarball is already fully expressed by the
+      # identity chunks and destroys decidability).
+      - name: Release contents == manifest contents (no extras)
+        run: |
+          python3 - <<'PY'
+          import json, os, sys
+          out = 'release/split'
+          man = json.load(open(os.path.join(out, 'manifest.json')))
+          declared = {c['file'] for e in man['entries']
+                                for v in e['variants'] for c in v['chunks']}
+          declared.add('manifest.json')
+          on_disk = {f for f in os.listdir(out)
+                     if os.path.isfile(os.path.join(out, f))}
+          extra, missing = on_disk - declared, declared - on_disk
+          if extra:   sys.exit('FATAL: undeclared assets: ' + ', '.join(sorted(extra)))
+          if missing: sys.exit('FATAL: missing declared assets: ' + ', '.join(sorted(missing)))
+          print('OK: %d assets, exactly the manifest set' % len(declared))
+          PY
+
+      - name: Contract checker (schema 2, V1-V10)
+        run: python3 /tmp/contract/tools/check-release-v4.py release/split/manifest.json --base release/split
+
+      # ── 4) Upgrade to schema 3 (v1.1 licence) ──────────────────────────────
+      # Order: AFTER the contents gate, BEFORE gh release create.
+      # Licences are DATA (release/licenses.json), never an inline heredoc:
+      # one release can contain several different licences, keyed by exact
+      # entry.name. Two hard assertions:
+      #   * check_invariants(old, new) — the upgrade must not change byte
+      #     identity, otherwise "no assets need re-uploading" is a lie;
+      #   * unmapped entries are NOT silently filled (falling back to the
+      #     top-level licence is honest; a wrong per-entry licence is worse).
+      - name: Upgrade manifest to schema 3
+        run: |
+          python3 - <<'PY'
+          import json, importlib.util, sys
+          spec = importlib.util.spec_from_file_location(
+              'u', '<PLACEHOLDER: path to upgrade-manifest-license.py>')
+          u = importlib.util.module_from_spec(spec); spec.loader.exec_module(u)
+          lic = json.load(open('release/licenses.json'))
+          p = 'release/split/manifest.json'
+          old = json.load(open(p))
+          by_name = {k: {kk: vv for kk, vv in v.items()
+                         if kk in ('id', 'url', 'role')}
+                     for k, v in lic['by_name'].items()}
+          new = u.upgrade(old, (lic['release']['expr'], lic['release']['url']),
+                          by_name=by_name)
+          if not u.check_invariants(old, new):
+              sys.exit('FATAL: upgrade changed byte identity')
+          json.dump(new, open(p, 'w'), ensure_ascii=False, indent=1)
+          n = sum(1 for e in new['entries'] if 'license' in e)
+          if n != len(new['entries']):
+              sys.exit('FATAL: %d entries lack a licence' % (len(new['entries']) - n))
+          print('schema 3 ok: %d/%d entries licensed' % (n, len(new['entries'])))
+          PY
+
+      # NOT a duplicate of step 3: that one validated V1-V10 on schema 2, this
+      # one validates V11 too. Both are required.
+      - name: Contract checker (schema 3, V1-V11)
+        run: |
+          python3 /tmp/contract/tools/check-release-v4.py release/split/manifest.json --base release/split
+          python3 - <<'PY'
+          import json, sys
+          m = json.load(open('release/split/manifest.json'))
+          if m.get('schema') != 3: sys.exit('FATAL: schema is not 3')
+          if not m.get('license', {}).get('id'): sys.exit('FATAL: no top-level license.id')
+          missing = [e['name'] for e in m['entries']
+                     if not e.get('license', {}).get('id')]
+          if missing: sys.exit('FATAL: entries without licence: ' + ', '.join(missing))
+          print('PASS schema 3 + per-entry licences')
+          PY
+
+      # ── 5) Identity path is complete (verify only, never upload) ────────────
+      # Reassemble each entry from identity chunks and check entry.sha256.
+      # This proves a client that speaks only plain GET can obtain every byte.
+      - name: Verify identity reassembly
+        run: |
+          python3 - <<'PY'
+          import json, os, hashlib, sys
+          out = 'release/split'
+          man = json.load(open(os.path.join(out, 'manifest.json')))
+          for e in man['entries']:
+              ident = [v for v in e['variants'] if v['codec'] == 'identity'][0]
+              blob = b''.join(open(os.path.join(out, c['file']), 'rb').read()
+                              for c in sorted(ident['chunks'], key=lambda c: c['part']))
+              if hashlib.sha256(blob).hexdigest() != e['sha256']:
+                  sys.exit('FATAL: identity reassembly mismatches ' + e['name'])
+          print('PASS all %d entries reconstructible from identity chunks' % len(man['entries']))
+          PY
+
+      # ── 6) Publish ONLY manifest-declared assets ───────────────────────────
+      # <PLACEHOLDER: your release creation command and chunk upload batching.>
+      # Batch by codec if the release is large. A half-finished release is worse
+      # than no release: manifest declares assets the client will 404 on, and
+      # that 404 means "publish broken", not "payload absent".
+      # - name: Create the release
+      #   run: gh release create "$TAG" release/split/manifest.json
+      # - name: Upload chunks
+      #   run: gh release upload "$TAG" release/split/*.zstd.* --clobber
+      #   ... etc for gzip / identity
+
+      # ── 7) Read the release back ───────────────────────────────────────────
+      # From the SERVING bytes, not the build directory. A failed read-back is
+      # not a passed read-back. Check isDraft too: a draft is invisible to
+      # clients. Repeat: contents comparison (both directions), schema 3 +
+      # per-entry licences, and the contract checker.
+      - name: Read back and reconcile
+        run: |
+          # <PLACEHOLDER: download the published release to /tmp/vfy>
+          python3 - <<'PY'
+          import json, os, sys
+          v = '/tmp/vfy'
+          man = json.load(open(os.path.join(v, 'manifest.json')))
+          declared = {c['file'] for e in man['entries']
+                                for vv in e['variants'] for c in vv['chunks']}
+          declared.add('manifest.json')
+          got = {f for f in os.listdir(v) if os.path.isfile(os.path.join(v, f))}
+          if got - declared:   sys.exit('FATAL: undeclared assets in the published release')
+          if declared - got:   sys.exit('FATAL: declared assets missing from the release')
+          if man.get('schema') != 3: sys.exit('FATAL: published schema is not 3')
+          nolic = [e['name'] for e in man['entries']
+                   if not e.get('license', {}).get('id')]
+          if nolic: sys.exit('FATAL: published entries without licence: ' + ', '.join(nolic))
+          print('PASS published release matches the manifest, schema 3, all licences present')
+          PY
+          python3 /tmp/contract/tools/check-release-v4.py /tmp/vfy/manifest.json --base /tmp/vfy

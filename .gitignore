@@ -42,6 +42,10 @@
 !/examples/*.ts
 !/examples/*.md
 !/examples/*.json
+# 生产者侧模板（不是可运行 CI，是给下游抄的骨架）
+!/examples/producer/
+!/examples/producer/*.md
+!/examples/producer/*.yml
 # 离线测试（跑测试要 node_modules，那是本地产物，不进库）
 !/examples/test/
 !/examples/test/*.ts
