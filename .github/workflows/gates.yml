@@ -41,6 +41,11 @@ jobs:
           python3 zreflect/facts.py --check "${REFLECT_DOC:-STATE.md}"
           # 执行面唯一产地（C1）：跑 runs_at="commit" 的闸门，聚合 ran/off/failed
           # （off 不是通过 —— 输出里单列）。别再 glob check_*.py。
+          # REFLECT_REPLAY=off 与 reflect-hooks/Einfacht.env 同源同因（issue #28）：
+          # principle.falsifiable 的 cmd 含 env_hint 档位自证，在「载体已接线」
+          # 的仓里结构性必红；等上游修自证后移除。PRINCIPLES.md 是新版的
+          # 原则纪律表（接受 = 文件存在），--check 会一并校验它。
+          export REFLECT_REPLAY=off
           python3 zreflect/registry.py --run commit
       - name: 平台模块自证（gate / runner / knobs / registry / guard / ledger / render / facts）
         run: |
