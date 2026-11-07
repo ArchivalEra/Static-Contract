@@ -201,19 +201,21 @@ def run(phase, repo, stdin_rows=None):
     if _prepare(phase, repo, doc):
         return 1
 
-    # ② 全部闸门：执行面唯一产地（C1）
-    # ⚠️ 给子进程一个**干净壳**：宿主进程的 REFLECT_* 来自本钩子上半段 source
-    #    的 env 载体，而子进程会经 einfacht-env.sh 自己加载同一份。不剥的话，
-    #    registry 自证里那条 env_hint 档位断言（「载体存在 + 无旋钮 ⇒ 必须提示」）
-    #    在接线正确的仓里结构性必红——旋钮永远在环境里，env_hint 永远静默
-    #    （本仓实测，已上游 issue #28）。剥掉 = 子进程回到「干净壳 + 自己加载」
-    #    的标准语境，与套件仓一致。
-    # ⚠️ 给子进程一个**干净壳 + 标准加载**：宿主进程的 REFLECT_* 来自本钩子
-    #    上半段 source 的载体，而自证 `env_hint_fires_with_carrier` 断言的恰恰是
-    #    「载体存在 + 进程里无旋钮 ⇒ 必须提示」——宿主把旋钮漏进子进程，该断言
-    #    在接线正确的仓里结构性必红（本仓实测，上游 issue #28）。
-    #    所以：剥掉继承的 REFLECT_*，改由子进程**自己 source 同一份载体** ——
-    #    与套件仓的自证语境（干净壳）完全一致，配置来源仍是那一份文件。
+    # ② commit 相位：全部闸门（执行面唯一产地，C1）
+    #    ⚠️ 给子进程一个**干净壳**：宿主进程的 REFLECT_* 来自本钩子上半段 source
+    #       的载体，而 registry 自证 env_hint_fires_with_carrier 断言「载体存在 +
+    #       无旋钮 ⇒ 必须提示」——宿主把旋钮漏进子进程，它在接线正确的仓里
+    #       结构性必红（本仓实测，上游 issue #28）。剥掉继承，子进程自己 source
+    #       同一份载体：语境与套件仓一致，配置来源仍是那一份文件。
+    #    push 相位不走 registry：名册里没有 runs_at="push" 的闸门（零值守卫会对
+    #       空相位 FATAL —— 套件仓同样如此），push 的判据只有下面的三语 README
+    #       同批检查。
+    if phase == "push":
+        ok, lines = _push_readmes_together(repo, stdin_rows or [])
+        for ln in lines:
+            print(ln, file=sys.stderr)
+        return 0 if ok else 1
+
     carrier = os.path.join(repo, "reflect-hooks", "Einfacht.env")
     child_env = {k: v for k, v in os.environ.items()
                  if not k.startswith("REFLECT_")}
@@ -224,12 +226,6 @@ def run(phase, repo, stdin_rows=None):
         print(out, file=sys.stderr)
         return 1
 
-    if phase == "push":
-        ok, lines = _push_readmes_together(repo, stdin_rows or [])
-        for ln in lines:
-            print(ln, file=sys.stderr)
-        if not ok:
-            return 1
     return 0
 
 

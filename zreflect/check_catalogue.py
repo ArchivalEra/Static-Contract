@@ -87,8 +87,11 @@ def main():
     return 0
 
 
-MODULE = module_meta("catalogue 派生闸门", "派生器自证 + 兜底源必须空 + 订阅清单非空",
-                     selftest=False)
+MODULE = module_meta(
+    "catalogue 派生闸门",
+    "派生器自证 + 兜底源必须空 + 订阅清单非空（selftest=False：逻辑自证"
+    "住在 registry._cases）",
+    selftest=False)
 
 
 if __name__ == "__main__":

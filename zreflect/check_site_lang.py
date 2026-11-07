@@ -549,7 +549,7 @@ def main():
 
 
 MODULE = module_meta("站点语言闸门",
-                     "HTML 全英文 + 废弃契约必有横幅 + 页面同步",
+                     "HTML 全英文 + 废弃契约必有横幅 + 页面同步（selftest=False：逻辑自证住在 registry._cases）",
                      selftest=False)
 
 

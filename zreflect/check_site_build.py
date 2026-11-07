@@ -37,7 +37,7 @@ def main():
     return 0
 
 
-MODULE = module_meta("站点构建自证闸门", "壳：把 scripts/build-site.py --selftest 挂进 commit 相位",
+MODULE = module_meta("站点构建自证闸门", "壳：把 scripts/build-site.py --selftest 挂进 commit 相位（selftest=False：逻辑自证住在 registry._cases）",
                      selftest=False)
 
 
