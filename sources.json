@@ -1,0 +1,22 @@
+{
+ "schema": 1,
+ "_why": "订阅清单：**只记「哪些仓的 release 进 catalogue」**，不记 tag / base / sha —— 那些每次从 release 现读。加新仓是显式决定（低频），坏 release 由 G1–G7 自动挡（不需要枚举 tag）。",
+ "sources": [
+  {
+   "repo": "ArchivalEra/Octave-Extra-Content",
+   "kind": "forge"
+  },
+  {
+   "repo": "ArchivalEra/LLVM-wasm",
+   "kind": "toolchain"
+  },
+  {
+   "repo": "ArchivalEra/Octave-Full-Wasm",
+   "kind": "engine"
+  },
+  {
+   "repo": "ArchivalEra/OpenModelica-Full-Wasm",
+   "kind": "engine"
+  }
+ ]
+}
